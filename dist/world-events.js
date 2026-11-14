@@ -1,10 +1,16 @@
+import {taxRates} from './tax-data.js';
 export const sectors={
   military:['Defesa',19], education:['Educação',19], health:['Saúde',24],
   policy:['Políticas públicas',24], science:['Ciência e tecnologia',14]
 };
 export const DEFAULT_ALLOCATION=Object.fromEntries(Object.entries(sectors).map(([k,v])=>[k,v[1]]));
 export const clamp=(value,low=0,high=100)=>Math.max(low,Math.min(high,value));
-export const nationalBudget=country=>country[3]*.22/52;
+export function taxReference(country){
+  const [rate,year]=taxRates[country[1]]??[18,null];
+  return {rate,year};
+}
+export const dailyTax=(country,economy=65)=>country[3]*taxReference(country).rate/100/365*(.75+economy/260);
+export const nationalBudget=(country,economy)=>dailyTax(country,economy)*7;
 export const refugeeCorridors={
   BRA:['ARG','URY','PRY','BOL','PER','COL'], ARG:['URY','CHL','PRY','BOL','BRA'],
   URY:['BRA','ARG'], PRY:['BRA','ARG','BOL'], BOL:['PER','BRA','PRY','ARG','CHL'],
@@ -75,8 +81,14 @@ export function advanceWorld(state,countries,route){
   w.science=clamp(w.science+(p.science-12)*.29+(p.education-17)*.06);
   w.economy=clamp(w.economy+(p.science-12)*.1+(p.policy-20)*.09+trade*2-war*.5-Object.keys(w.embargoes).length*.16);
   w.approval=clamp(w.approval+(p.policy-20)*.18+(w.health-priorHealth)*.28+(w.economy-priorEconomy)*.5-war*.3);
-  const nextBudget=nationalBudget(own)*(.75+w.economy/260);
-  w.finance={civil:nextBudget*(100-p.military)/100,military:nextBudget*p.military/100,trade};
+  const previousEconomies=w.nationalEconomies??{};
+  w.nationalEconomies=Object.fromEntries(Object.entries(countries).map(([code,country])=>{
+    const previous=previousEconomies[code], ownNation=code===state.code;
+    const daily=dailyTax(country,ownNation?w.economy:state.wars[code]?57:65);
+    return [code,{daily,weekly:daily*7,total:(previous?.total??0)+daily*7}];
+  }));
+  const nextBudget=w.nationalEconomies[state.code].weekly;
+  w.finance={daily:nextBudget/7,taxes:nextBudget,total:w.nationalEconomies[state.code].total,civil:nextBudget*(100-p.military)/100,military:nextBudget*p.military/100,trade};
   if(w.health<48&&!w.crises.health){
     w.crises.health=true;report(state,'Saúde pública',own[0],'A rede de saúde de '+own[0]+' entrou em alerta por queda da capacidade de atendimento.');
   }else if(w.health>=55&&w.crises.health){

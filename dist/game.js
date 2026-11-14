@@ -1,9 +1,10 @@
+import {planTransport,transportLabels} from './logistics.js?v=logistics1';
 import {islands} from './pacific.js';
 import {stock,addStock} from './forces.js?v=world2';
-import {world,sectors,report,nationalBudget,setEmbargo,setBorder,warNews,tradeValue,refugeeCorridors} from './world-events.js?v=world2';
-import {equipment,portFor,regionalLinks,landSupply,seaSupply,orderTravel,garrison,changeGarrison,seedForces} from './forces.js?v=world2';
+import {world,sectors,report,nationalBudget,dailyTax,taxReference,setEmbargo,setBorder,warNews,tradeValue,refugeeCorridors} from './world-events.js?v=logistics1';
+import {equipment,portFor,regionalLinks,landSupply,seaSupply,garrison,changeGarrison,seedForces} from './forces.js?v=world2';
 import {regionsFor,regionDestination,mineralRevenue} from './regions.js';
-import {MODES,route,annualDefense,strength,round,newCampaign,log,relation,changeRelation,distance,seaTrade,tradePartners,advance,negotiate} from './engine.js?v=world2';
+import {MODES,annualDefense,strength,round,newCampaign,log,relation,changeRelation,distance,seaTrade,tradePartners,advance,negotiate} from './engine.js?v=logistics1';
 const $=id=>document.getElementById(id);
 const safe=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'US$ '+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(n)+' bi';
@@ -16,7 +17,7 @@ const islandById=new Map(islands.map(row=>[row[0],row]));
 const islandOwners=new Set(islands.map(row=>row[1]));
 let state;
 try{state=JSON.parse(localStorage.getItem(key))}catch{}
-let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', mode='land', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
+let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', mode='auto', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
 const flag=c=>/^[A-Z]{2}$/.test(countries[c][1])?[...countries[c][1]].map(a=>String.fromCodePoint(a.charCodeAt()+127397)).join(''):'◈';
 const date=t=>new Date(Date.UTC(2026,10,14+(t-1)*7)).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'});
 const cap=c=>places[c]?.find(p=>p[3])??places[c]?.[0];
@@ -26,6 +27,7 @@ function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{}}
 function update(){save();draw()}
 function modal(title,body){$('modal-title').textContent=title;$('modal-body').innerHTML=body;if(!$('modal').open)$('modal').showModal()}
 let selectedIsland=null;
+let transportPreference='auto';
 let pickingRoute=false, originPicked=false, cargo=false;
 let commandAtlas=[], commandRequest=0, forceOrigin='', forceType='infantry', forceCount=1, supplyVisible=false;
 const linkCache=new WeakMap();
@@ -34,7 +36,7 @@ let atlas=[], regionId=null, atlasCountry=null, atlasStatus="", atlasRequest=0;
 const currentRegion=()=>atlas.find(r=>r[0]===regionId);
 const sample=newCampaign('BRA',countries);
 function start(code){
-  state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;pickingRoute=false;originPicked=false;cargo=false;selectedIsland=null;
+  state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode='auto';tab='ops';units=10;pickingRoute=false;originPicked=false;cargo=false;selectedIsland=null;
   log(state,'Campanha iniciada. '+countries[code][0]+' está sob seu comando.');
   atlas=[];regionId=null;atlasCountry=null;
   commandAtlas=[];forceOrigin='';forceType='infantry';forceCount=1;
@@ -66,13 +68,13 @@ function pickTarget(code,city=0){
   if(code===active().code){loadAtlas(code);originIndex=city;drawPanel();drawMap();notice('Origem: '+(places[code]?.[city]?.[0]??countries[code][0]));return}
   target=code;selected=city;regionId=null;
   loadAtlas();
-  if(!route(active().code,target,origin(),destination(),mode))mode=['land','sea','air'].find(m=>route(active().code,target,origin(),destination(),m))??'air';
+
   draw();
 }
 const active=()=>state??sample;
 const origin=()=>places[active().code]?.[originIndex]??cap(active().code);
 const destination=()=>currentRegion()&&atlasCountry===target?regionDestination(currentRegion()):places[target]?.[selected]??cap(target);
-const getRoute=()=>route(active().code,target,origin(),destination(),mode);
+const getRoute=()=>planTransport({a:origin(),b:destination(),from:active().code,to:target,countries,preference:mode,count:Math.max(1,Math.min(active().units,units))});
 const box=(label,value)=>'<div class="cell"><small>'+label+'</small><b>'+value+'</b></div>';
 function draw(){
   const s=active(),c=countries[s.code],n=countries[target];
@@ -81,8 +83,9 @@ function draw(){
   const metrics=[['▤','PIB nominal',c[3]?money(c[3]):'—','FMI · 2025'],['◈','Orçamento',money(s.treasury),'CAIXA DISPONÍVEL'],['▥','Forças na reserva',format(s.units)+' un.','ÍNDICE SIMULADO'],['⚑','Conflitos ativos',String(Object.keys(s.wars).length),Object.keys(s.pacts).length+' ACORDO(S) COMERCIAIS']];
   $('metrics').innerHTML=metrics.map(([icon,label,value,sub],i)=>'<'+(i===1?'button id="budget" aria-label="Ajustar orçamento e mobilizar tropas"':'div')+' class="metric"><div class="icon" aria-hidden="true">'+icon+'</div><div style="text-align:left"><label>'+label+'</label><strong>'+value+'</strong><small>'+sub+'</small></div></'+(i===1?'button':'div')+'>').join('');
   $('budget').onclick=budget;
+  const tax=taxReference(n), daily=world(s).nationalEconomies?.[target]?.daily??dailyTax(n);
   const war=s.wars[target],pact=s.pacts[target],conquered=s.occupied[target]?.includes(cap(target)?.[0]);
-  $('nation').innerHTML='<div class="nation-title"><div class="flag">'+flag(target)+'</div><div><h2>'+safe(n[0])+'</h2><p class="nation-meta">'+safe(cap(target)?.[3]?cap(target)[0]+' · Capital':cap(target)?.[0]||n[2]||'Território')+'</p></div><span class="status '+(war?'war':'')+'">'+(war?'EM GUERRA':conquered?'OCUPADA':pact?'ACORDO':'EM PAZ')+'</span></div><div class="nation-data">'+box('PIB 2025',n[3]?money(n[3]):'Sem dado')+box('DEFESA '+(n[4]==null?'ESTIMADA':'2025'),money(annualDefense(n)))+box('FORÇA INICIAL',strength(n)+' un.')+box('RELAÇÃO',String(relation(s,target)))+'</div>';
+  $('nation').innerHTML='<div class="nation-title"><div class="flag">'+flag(target)+'</div><div><h2>'+safe(n[0])+'</h2><p class="nation-meta">'+safe(cap(target)?.[3]?cap(target)[0]+' · Capital':cap(target)?.[0]||n[2]||'Território')+'</p></div><span class="status '+(war?'war':'')+'">'+(war?'EM GUERRA':conquered?'OCUPADA':pact?'ACORDO':'EM PAZ')+'</span></div><div class="nation-data">'+box('PIB 2025',n[3]?money(n[3]):'Sem dado')+box('DEFESA '+(n[4]==null?'ESTIMADA':'2025'),money(annualDefense(n)))+box('FORÇA INICIAL',strength(n)+' un.')+box('RELAÇÃO',String(relation(s,target)))+box('IMPOSTOS / DIA',money(daily))+box('TAXA SOBRE PIB',tax.rate+'%'+(tax.year?' · '+tax.year:' · estimativa'))+'</div>';
   $('log').innerHTML=s.logs.length?s.logs.slice(0,8).map(l=>'<div class="line"><time>T'+l.turn+'</time><span>'+safe(l.text)+'</span></div>').join(''):'<p class="empty">O registro começa quando você assume uma nação.</p>';
   const movements=[...s.queues,...(s.transfers??[]).map(o=>({...o,city:o.destination.name,units:o.count,cargo:o.cargo}))];
   $('missions').innerHTML=movements.length?movements.map(m=>'<div class="line"><time>T'+m.eta+'</time><span><b>'+safe(m.city)+'</b> · '+MODES[m.mode].label+' · '+m.units+(m.cargo?' lotes':' un.')+'</span></div>').join(''):'<p class="empty">Nenhuma ordem em trânsito.</p>';
@@ -90,9 +93,9 @@ function draw(){
 }
 function budget(){
   if(!state)return choose();
-  const w=world(state),c=countries[state.code],base=nationalBudget(c)*(.75+w.economy/260);
+  const w=world(state),c=countries[state.code],base=nationalBudget(c,w.economy),tax=taxReference(c);
   const price=round(Math.max(.06,annualDefense(c)/strength(c)*.15));
-  modal('Orçamento nacional','<div class="form"><p>Receita pública semanal simulada <b>'+money(base)+'</b> · Caixa de defesa <b>'+money(state.treasury)+'</b></p>'+
+  modal('Orçamento nacional','<div class="form"><p>Impostos por dia <b>'+money(dailyTax(c,w.economy))+'</b> · '+tax.rate+'% do PIB '+(tax.year?'(Banco Mundial, '+tax.year+')':'(estimativa do jogo)')+'<br>Total previsto por turno <b>'+money(base)+'</b> · Caixa de defesa <b>'+money(state.treasury)+'</b></p>'+
     Object.entries(sectors).map(([id,[name]])=>'<label>'+name+' (%)<input id="budget-'+id+'" type="number" min="0" max="100" step="1" value="'+w.budget[id]+'"></label>').join('')+
     '<p id="budget-preview" class="hint"></p><button id="apply-budget" class="primary">Salvar orçamento</button><button id="recruit">Mobilizar 5 unidades · '+money(price*5)+'</button></div>');
   const inputs=Object.keys(sectors).map(id=>[id,$('budget-'+id)]);
@@ -104,7 +107,7 @@ function budget(){
     return allocation;
   }
   inputs.forEach(([,input])=>input.oninput=show);show();
-  $('apply-budget').onclick=()=>{w.budget=show();w.budgetChanged=true;report(state,'Economia',c[0],c[0]+' aprovou novo orçamento nacional, com '+w.budget.military+'% para defesa.');$('modal').close();update()};
+  $('apply-budget').onclick=()=>{w.budget=show();report(state,'Economia',c[0],c[0]+' aprovou novo orçamento nacional, com '+w.budget.military+'% para defesa.');$('modal').close();update()};
   $('recruit').onclick=()=>{if(state.treasury<price*5)return notice('Caixa insuficiente.');state.treasury=round(state.treasury-price*5);state.units+=5;log(state,'Cinco unidades foram mobilizadas.');$('modal').close();update()};
 }
 const cityOptions=(c,i)=> (places[c]??[]).map((p,j)=>'<option value="'+j+'" '+(i===j?'selected':'')+'>'+safe(p[0])+(p[3]?' ★':'')+'</option>').join('');
@@ -114,11 +117,11 @@ function drawPanel(){
   if(tab==='forces')return drawForces();
   if(tab==='trade')return drawTrade();
   const s=active(),r=getRoute(),region=atlasCountry===target?currentRegion():null,available=Math.min(Math.max(1,units),s.units);
-  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(MODES).map(([k,m])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+m.label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><p class="hint" id="route-info">'+(r?safe(r.name)+'<br>'+format(r.km)+' km · '+r.turns+' turno(s) · '+money(r.cost):'Sem rota cadastrada nesta modalidade.')+'</p><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
+  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(transportLabels).map(([k,label])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><div class="hint" id="route-info">'+(r?routeSummary(r):'Sem rota cadastrada nesta modalidade.')+'</div><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
   $('origin').onchange=e=>{originIndex=Number(e.target.value);drawPanel();drawMap()};
   $('destination').onchange=e=>{selected=Number(e.target.value);drawPanel();drawMap()};
   $('mode').onchange=e=>{mode=e.target.value;drawPanel();drawMap()};
-  $('units').oninput=e=>{units=Number(e.target.value)};
+  $('units').oninput=e=>{units=Number(e.target.value);const quote=getRoute();$('route-info').innerHTML=quote?routeSummary(quote):'Sem rota para esta ordem.';drawMap()};
   $('war').onclick=()=>{
     if(!state)return choose();
     const opponent=target;
@@ -127,6 +130,8 @@ function drawPanel(){
   };
   $('dispatch').onclick=()=>{
     if(!state)return choose();
+    const r=getRoute();
+    if(!r)return notice('Sem rota disponível.');
     const p=destination(),amount=Number($('units').value);
     if(!Number.isInteger(amount)||amount<1||amount>state.units)return notice('Informe uma quantidade válida de unidades.');
     if(state.treasury<r.cost)return notice('Caixa insuficiente para esta missão.');
@@ -183,7 +188,7 @@ const countryPaths=[...$('land').children];
 function drawMap(){
   const s=active();
   $('route-mode').setAttribute('aria-pressed',String(pickingRoute));
-  countryPaths.forEach(p=>{const c=p.dataset.code;p.style.fill=fillCountry(c);p.classList.toggle('selected',c===target)});
+  countryPaths.forEach(p=>{const c=p.dataset.code;p.style.fill=fillCountry(c);p.classList.toggle('selected',c===target);const tax=taxReference(countries[c]);p.querySelector('title').textContent=countries[c][0]+' · Impostos/dia: '+money(dailyTax(countries[c],c===s.code?world(s).economy:65))+(tax.year?'':' (estimativa)')});
   const markers=[];
   for(const code of codes){
     const list=places[code],priority=code===target||code===s.code;
@@ -200,7 +205,8 @@ function drawMap(){
   drawSupply();
   const r=tab==='forces'?forceRoute():getRoute();
   const commerce=tradePartners(s.code).map(code=>[seaTrade(s.code,code),world(s).trade[code]&&!world(s).embargoes[code]&&!s.wars[code]?'tradeActive':'trade']);
-  const plotted=[...commerce,...s.queues.map(r=>[r,false]),...(s.transfers??[]).map(r=>[r,false]),...(r?[[r,true]]:[])];
+  const orders=[...s.queues,...(s.transfers??[])];
+  const plotted=[...commerce,...orders.flatMap(order=>(order.legs??[order]).map(leg=>[leg,false])),...(r?(r.legs??[r]).map(leg=>[leg,true]):[])];
   $('routes').innerHTML=plotted.map(([path,preview])=>{
     const lines=[[]];
     path.points.forEach((p,i)=>{
@@ -213,9 +219,9 @@ function drawMap(){
       }
       lines.at(-1).push(svgPoint(p[1],p[2]).join(','));
     });
-    return lines.map(points=>'<polyline points="'+points.join(' ')+'" fill="none" stroke="'+(preview==='trade'?'#577d98':preview==='tradeActive'?'#61cfff':preview?'#80e7bc':'#f2bd6a')+'" opacity=".94" stroke-width="'+(preview?1.8:2.3)+'" stroke-dasharray="'+(preview?'4 4':'7 3')+'" vector-effect="non-scaling-stroke" pointer-events="none"/>').join('');
+    return lines.map(points=>'<polyline points="'+points.join(' ')+'" fill="none" stroke="'+(preview==='trade'?'#577d98':preview==='tradeActive'?'#61cfff':preview?({land:'#80e7bc',sea:'#61cfff',air:'#dbaaef'}[path.mode]??'#80e7bc'):'#f2bd6a')+'" opacity=".94" stroke-width="'+(preview?1.8:2.3)+'" stroke-dasharray="'+(preview?'4 4':'7 3')+'" vector-effect="non-scaling-stroke" pointer-events="none"/>').join('');
   }).join('');
-  $('legend').innerHTML=[[fromColor,'Sob seu comando'],[warColor,'Em guerra'],[occupiedColor,'Capitulou'],['#e6c784','Capital'],['#80e7bc','Rota prevista'],['#e9d7a6','Capital regional'],['#dbaaef','Área mineral'],['#c9a55b','Província ocupada'],['#61cfff','Comércio marítimo']].map(([color,label])=>'<span><i class="key" style="background:'+color+'"></i>'+label+'</span>').join('');
+  $('legend').innerHTML=[[fromColor,'Sob seu comando'],[warColor,'Em guerra'],[occupiedColor,'Capitulou'],['#e6c784','Capital'],['#80e7bc','Rodovia'],['#dbaaef','Voo'],['#e9d7a6','Capital regional'],['#dbaaef','Área mineral'],['#c9a55b','Província ocupada'],['#61cfff','Comércio marítimo']].map(([color,label])=>'<span><i class="key" style="background:'+color+'"></i>'+label+'</span>').join('');
   $('mapstatus').textContent=Object.keys(countries).length+' TERRITÓRIOS · '+Object.values(places).reduce((n,p)=>n+p.length,0)+' LOCALIDADES';
   drawIslands();
   syncWorldCopies();
@@ -309,7 +315,7 @@ async function loadAtlas(code=target){
 function selectRegion(id){
   selectedIsland=null;$('island-select').value='';
   regionId=id||null;
-  if(atlasCountry===target&&!getRoute())mode='air';
+
   draw();
   focusAtlas();
 }
@@ -448,21 +454,23 @@ async function loadCommandAtlas(){
   }catch{if(tab==='forces')notice('Não foi possível carregar suas guarnições.')}
 }
 const homeForces=()=>[...commandAtlas,...atlas.filter(r=>active().regions?.[r[0]]&&atlasCountry!==active().code)];
+function routeSummary(route){
+  return format(route.km)+' km · '+route.days+' dia(s) · chegada em '+route.turns+' turno(s) · '+money(route.cost)+
+    '<ol class="itinerary">'+route.legs.map(leg=>'<li>'+safe(leg.label)+' · '+safe(leg.from)+' → '+safe(leg.to)+' · '+format(Math.round(leg.km))+' km · '+money(leg.cost)+' <small>'+safe(leg.source)+'</small></li>').join('')+'</ol>';
+}
 function forceRoute(){
   const a=homeForces().find(r=>r[0]===forceOrigin),b=currentRegion();
   if(!a||!b||a[0]===b[0])return null;
-  const mode=cargo?'land':equipment[forceType][2],code=active().code;
-  let points;
-  if(mode==='sea')points=seaSupply(a[0],b[0]);
-  if(mode==='air')points=[regionDestination(a),regionDestination(b)];
-  if(mode==='land'){
-    if(atlasCountry===code)points=landSupply(commandAtlas,linksFor(commandAtlas),a[0],b[0],()=>true);
-    else if(commandAtlas.includes(a))points=route(code,atlasCountry,regionDestination(a),regionDestination(b),'land')?.points;
-    else if(active().regions?.[a[0]]?.country===atlasCountry)points=landSupply(atlas,linksFor(atlas),a[0],b[0],r=>r===b||!!active().regions?.[r[0]]);
+  const kind=cargo?'land':equipment[forceType][2],code=active().code;
+  const from=commandAtlas.includes(a)?code:active().regions?.[a[0]]?.country;
+  if(!from)return null;
+  let landPath;
+  if(from===atlasCountry){
+    landPath=landSupply(atlas,linksFor(atlas),a[0],b[0],r=>from===code||r===b||!!active().regions?.[r[0]]);
   }
-  if(!points)return null;
-  const travel=orderTravel(mode,points,distance);
-  return {...travel,cost:round(Math.max(.01,travel.km/80000+forceCount*equipment[forceType][4]*.12))};
+  const seaPath=seaSupply(a[0],b[0]);
+  return planTransport({a:regionDestination(a),b:regionDestination(b),from,to:atlasCountry,countries,landPath,seaPath,
+    preference:kind==='air'?'air':kind==='sea'?'sea':transportPreference,kind,unit:forceType,count:forceCount,cargo});
 }
 function drawSupply(){
   $('supply').replaceChildren();
@@ -485,12 +493,14 @@ function drawForces(){
     '<label>Origem da guarnição<select id="force-origin">'+homes.map(r=>'<option value="'+safe(r[0])+'" '+(r[0]===forceOrigin?'selected':'')+'>'+safe(r[1])+(portFor(r[0])?' ⚓':'')+'</option>').join('')+'</select></label>'+
     '<label>Carga<select id="force-cargo"><option value="troops">Tropas</option><option value="resources" '+(cargo?'selected':'')+'>Suprimentos</option></select></label>'+
     (cargo?'<p class="hint">Estoque na origem: '+available+' lotes.</p>':'<label>Unidade<select id="force-unit">'+groups.map(group=>'<optgroup label="'+group+'">'+Object.entries(equipment).filter(([,info])=>info[0]===group).map(([key,info])=>'<option value="'+key+'" '+(key===forceType?'selected':'')+'>'+info[1]+' · '+(garrison(s,s.code,forceOrigin)[key]??0)+'</option>').join('')+'</optgroup>').join('')+'</select></label>')+
-    '<label>Quantidade<input id="force-count" type="number" min="1" value="'+forceCount+'"></label>'+
+    (cargo||equipment[forceType][2]==='land'?'<label>Transporte<select id="transport-pref">'+Object.entries(transportLabels).map(([id,label])=>'<option value="'+id+'" '+(id===transportPreference?'selected':'')+'>'+label+'</option>').join('')+'</select></label>':'')+
+    '<label>Quantidade<input id="force-count"  type="number" min="1" value="'+forceCount+'"></label>'+
     '<p class="hint">'+(dest?'Destino · '+safe(dest[1])+(dest[2]?' · '+safe(dest[2][0]):''):'Selecione um destino regional.')+'</p>'+
-    '<p class="hint" id="force-route">'+(travel?format(travel.km)+' km · '+travel.turns+' turno(s) · '+money(travel.cost)+(travel.points.length>2?'<br>'+travel.points.map(p=>safe(p[0])).join(' → '):''):dest?'Sem rota para esta unidade. Navios exigem portos conectados.':'')+'</p>'+
+    '<div class="hint" id="force-route">'+(travel?routeSummary(travel):dest?'Sem rota cadastrada para esta combinação.':'')+'</div>'+
     '<button id="force-send" class="primary" '+(!travel||!available||!state||!friendly&&(cargo||!s.wars[atlasCountry])?'disabled':'')+'>'+(cargo?'Enviar suprimentos':friendly?'Enviar reforço':'Atacar província')+'</button>'+
     (!friendly&&dest&&!s.wars[atlasCountry]?'<p class="hint">Declare guerra ao país na aba Operações para atacar.</p>':'')+
     '<button id="force-recruit" '+(!state||!forceOrigin||!cargo&&equipment[forceType][2]==='sea'&&!portFor(forceOrigin)?'disabled':'')+'>'+(cargo?'Comprar 10 lotes · '+money(.1):'Mobilizar 1 unidade · '+money(equipment[forceType][4]))+'</button></div>';
+  if($('transport-pref'))$('transport-pref').onchange=e=>{transportPreference=e.target.value;drawForces();drawMap()};
   $('force-origin').onchange=e=>{forceOrigin=e.target.value;drawForces();drawMap()};
   $('force-cargo').onchange=e=>{cargo=e.target.value==='resources';drawForces();drawMap()};
   if($('force-unit'))$('force-unit').onchange=e=>{forceType=e.target.value;drawForces();drawMap()};
@@ -510,7 +520,7 @@ function drawForces(){
     if(cargo)addStock(state,forceOrigin,-forceCount);
     else changeGarrison(state,state.code,forceOrigin,forceType,-forceCount);
     (state.transfers??=[]).push({...travel,to:atlasCountry,origin:forceOrigin,unit:forceType,cargo,count:forceCount,eta:state.turn+travel.turns,destination:{id:dest[0],name:dest[1],resources:dest[3]}});
-    log(state,'Ordem para '+dest[1]+' · '+forceCount+' × '+equipment[forceType][1]+'.');
+    log(state,'Ordem para '+dest[1]+' · '+forceCount+(cargo?' lotes de suprimento':' × '+equipment[forceType][1])+'.');
     update();
   };
 }

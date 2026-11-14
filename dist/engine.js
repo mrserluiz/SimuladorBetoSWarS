@@ -101,7 +101,7 @@ export function advance(state,countries) {
   const fiscal=advanceWorld(state,countries,seaTrade);
   const w=world(state);
   const pactRevenue=Object.keys(state.pacts).filter(code=>!w.embargoes[code]&&!state.wars[code]).length*.015;
-  const income=(w.budgetChanged?fiscal.military:weeklyFunds(state,country))+fiscal.trade+mineralRevenue(state)+pactRevenue+Object.keys(state.occupied).length*.025;
+  const income=fiscal.military+fiscal.trade+mineralRevenue(state)+pactRevenue+Object.keys(state.occupied).length*.025;
   const maintenance=state.units*.0015+Object.keys(state.wars).length*.025;
   state.treasury=round(Math.max(0,state.treasury+income-maintenance));
   if (state.treasury===0 && income<maintenance && state.units>0) {

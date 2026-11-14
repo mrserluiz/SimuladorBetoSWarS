@@ -46,3 +46,9 @@ O orçamento distribui 100% entre defesa, educação, saúde, políticas públic
 ## Pacífico e ilhas
 
 O mapa se repete horizontalmente ao cruzar o meridiano de 180° e aproxima até 120×. O botão **Pacífico** centra a região. A lista **Ilhas do Pacífico** localiza territórios e atóis mesmo quando o contorno é pequeno. O catálogo combina unidades administrativas do [Natural Earth 1:10 milhões](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-details/) com pontos insulares selecionados. Uma expedição usa a reserva nacional e resolve a ocupação ao chegar, durante guerra com o controlador indicado. O traçado e o tempo da expedição são aproximações de jogo.
+
+## Logística e arrecadação
+
+O planejador compara trajetos terrestres, embarque marítimo e transporte aéreo. A rota marítima usa uma rede de 47 portos e 143 conexões derivadas do [SeaRoute](https://eurostat.github.io/searoute/) via searoute-py 1.6.0. A licença acompanha os dados. As escalas aéreas usam 168 aeroportos do [OurAirports](https://ourairports.com/data/) e um alcance simulado de 5.600 km. O trecho Rio de Janeiro–Belo Horizonte usa dados © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) calculados pelo OSRM. Os outros acessos terrestres usam corredores estimados. Distâncias, transbordo e peso da carga entram no prazo e no custo.
+
+A economia usa a última taxa de [receita tributária em relação ao PIB do Banco Mundial](https://data.worldbank.org/indicator/GC.TAX.TOTL.GD.ZS) disponível desde 2015 para 149 economias. As demais usam uma estimativa de 18%. Cada turno contabiliza sete dias de receita, e a parcela destinada à defesa financia o caixa de operações.
