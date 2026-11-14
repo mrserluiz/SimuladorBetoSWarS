@@ -9,7 +9,7 @@ const codes=Object.keys(countries).filter(c=>places[c]?.length).sort((a,b)=>coun
 const key='meridiano-campanha-v1';
 let state;
 try{state=JSON.parse(localStorage.getItem(key))}catch{}
-let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', layer='politico', mode='land', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
+let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', layer='regioes', mode='land', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
 const flag=c=>/^[A-Z]{2}$/.test(countries[c][1])?[...countries[c][1]].map(a=>String.fromCodePoint(a.charCodeAt()+127397)).join(''):'◈';
 const date=t=>new Date(Date.UTC(2026,10,14+(t-1)*7)).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'});
 const cap=c=>places[c]?.find(p=>p[3])??places[c]?.[0];
@@ -25,7 +25,7 @@ function start(code){
   state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;
   log(state,'Campanha iniciada. '+countries[code][0]+' está sob seu comando.');
   atlas=[];regionId=null;atlasCountry=null;
-  $('modal').close();reset();update();if(layer==='regioes')loadAtlas();notice('Comando assumido: '+countries[code][0]);
+  $('modal').close();reset();update();if(layer==='regioes')loadAtlas(code);notice('Comando assumido: '+countries[code][0]);
 }
 $('close').onclick=()=>$('modal').close();
 $('new').onclick=()=>choose();
@@ -140,7 +140,7 @@ async function send(message,proposal){
   }catch{notice('Resposta das regras de campanha mantida.')}finally{pendingChat=false}
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;drawPanel()});
-document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>{layer=b.dataset.layer;if(layer==='regioes')loadAtlas();else regionId=null;document.querySelectorAll('[data-layer]').forEach(x=>x.classList.toggle('on',x===b));draw()});
+document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>{layer=b.dataset.layer;if(layer==='regioes')loadAtlas(atlasCountry??active().code);else {regionId=null;reset();}document.querySelectorAll('[data-layer]').forEach(x=>x.classList.toggle('on',x===b));draw()});
 const palette={Europe:'#4b6574',Americas:'#445f59',Asia:'#526471',Africa:'#566057',Oceania:'#4e6170'};
 const fromColor='#397e68', targetColor='#52787d', warColor='#8c494f', occupiedColor='#8d784f';
 function fillCountry(code){
@@ -268,11 +268,13 @@ async function loadAtlas(code=target){
     atlas=result;atlasStatus=result.length?'':'Nenhuma subdivisão disponível para este território.';
   }catch{if(request!==atlasRequest)return;atlasStatus='Atlas regional indisponível. Selecione o país novamente para tentar.'}
   draw();
+  if(layer==='regioes'&&atlas.length)focusAtlas();
 }
 function selectRegion(id){
   regionId=id||null;
   if(atlasCountry===target&&!getRoute())mode='air';
   draw();
+  focusAtlas();
 }
 function drawRegionalPanel(){
   const panel=$('regional-panel');
@@ -286,7 +288,7 @@ function drawRegionalPanel(){
     (atlasStatus?'<p class="hint">'+atlasStatus+'</p>':'')+
     (region?'<p class="hint">'+(region[2]?'Capital local · '+safe(region[2][0]):'Capital sem registro · objetivo regional')+(atlasCountry===s.code||s.regions?.[region[0]]?' · Sob seu comando':'')+'</p>':'')+
     (resources?'<ul class="deposits">'+resources+'</ul>':'')+
-    '<p class="hint">'+owned.length+' região(ões) ocupada(s) · Receita mineral simulada '+money(mineralRevenue(s))+'/turno.</p></div>';
+    '<p class="hint">'+(atlas.length?atlas.length+' subdivisões em '+safe(countries[atlasCountry][0])+' · ':'')+owned.length+' região(ões) ocupada(s) · Receita mineral simulada '+money(mineralRevenue(s))+'/turno.</p></div>';
   $('atlas-country').onchange=e=>{const code=e.target.value;if(code===s.code){loadAtlas(code);draw()}else pickTarget(code)};
   $('region-select').onchange=e=>selectRegion(e.target.value);
 }
@@ -297,9 +299,25 @@ function drawAtlas(){
     const id=safe(r[0]), selected=r[0]===regionId, occupied=!!s.regions?.[r[0]];
     const marker=(lon,lat,title,kind)=>{const [x,y]=svgPoint(lon,lat);return '<circle data-region="'+id+'" class="regional-marker '+kind+'" cx="'+x+'" cy="'+y+'" r="'+(kind==='mineral'?3.4:2.4)/Math.sqrt(zoom)+'"><title>'+safe(title)+'</title></circle>'};
     const shape=r[4]?'<path data-region="'+id+'" class="region-shape '+(selected?'chosen ':'')+(occupied?'held':'')+'" d="'+r[4]+'"><title>'+safe(r[1])+'</title></path>':'';
-    const places=(r[2]&&(zoom>=1.7||selected)?marker(r[2][1],r[2][2],r[2][0],'regional-capital'):'')+r[3].map(site=>marker(site[2],site[3],site[0]+' · '+site[1],'mineral')).join('');
+    const places=(r[2]?marker(r[2][1],r[2][2],r[2][0],'regional-capital'):'')+r[3].map(site=>marker(site[2],site[3],site[0]+' · '+site[1],'mineral')).join('');
     return [shape,places];
   }).reduce(([shapes,markers],[shape,points])=>[shapes+shape,markers+points],['','']).join('');
 }
+function focusAtlas(){
+  const shapes=[...$('regions').querySelectorAll('.region-shape')];
+  const selected=shapes.find(shape=>shape.dataset.region===regionId);
+  let boxes=(selected?[selected]:shapes).map(shape=>shape.getBBox()).filter(box=>box.width&&box.height);
+  if(!boxes.length)return;
+  if(!selected&&atlasCountry==='FRA'){
+    const mainland=boxes.filter(box=>box.x>560&&box.x<650&&box.y<165);
+    if(mainland.length)boxes=mainland;
+  }
+  const left=Math.min(...boxes.map(b=>b.x)),right=Math.max(...boxes.map(b=>b.x+b.width));
+  const top=Math.min(...boxes.map(b=>b.y)),bottom=Math.max(...boxes.map(b=>b.y+b.height));
+  zoom=Math.max(1,Math.min(9,980/Math.max(1,right-left),410/Math.max(1,bottom-top)));
+  offset=[600-(left+right)/2*zoom,265-(top+bottom)/2*zoom];
+  clampMap();drawMap();
+}
 draw();
+loadAtlas(active().code);
 if(!state)choose();

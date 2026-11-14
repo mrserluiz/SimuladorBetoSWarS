@@ -43,3 +43,7 @@ dialog{max-width:min(92vw,520px);width:100%;max-height:88vh;background:#14212c;b
 .regional-marker{stroke:#13202a;stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
 .regional-capital{fill:#e9d7a6}.mineral{fill:#dbaaef}
 .deposits{padding-left:17px;margin:0;font-size:12px;color:var(--muted)}.deposits a{color:var(--mint)}
+.region-shape{stroke:#c9e2db;stroke-opacity:.9;stroke-width:1;fill-opacity:.72}
+#regional-panel .form{grid-template-columns:repeat(2,minmax(0,1fr))}
+#regional-panel .form>p,#regional-panel .form>ul{grid-column:1/-1}
+.layers{flex-wrap:wrap}
