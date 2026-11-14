@@ -1,10 +1,10 @@
-import {planTransport,transportLabels} from './logistics.js?v=logistics1';
+import {planTransport,transportLabels,verifyTransport} from './logistics.js?v=daily1';
 import {islands} from './pacific.js';
 import {stock,addStock} from './forces.js?v=world2';
-import {world,sectors,report,nationalBudget,dailyTax,taxReference,setEmbargo,setBorder,warNews,tradeValue,refugeeCorridors} from './world-events.js?v=logistics1';
+import {world,sectors,report,nationalBudget,dailyTax,taxReference,setEmbargo,setBorder,warNews,tradeValue,refugeeCorridors} from './world-events.js?v=daily1';
 import {equipment,portFor,regionalLinks,landSupply,seaSupply,garrison,changeGarrison,seedForces} from './forces.js?v=world2';
 import {regionsFor,regionDestination,mineralRevenue} from './regions.js';
-import {MODES,annualDefense,strength,round,newCampaign,log,relation,changeRelation,distance,seaTrade,tradePartners,advance,negotiate} from './engine.js?v=logistics1';
+import {MODES,annualDefense,strength,round,newCampaign,log,relation,changeRelation,distance,seaTrade,tradePartners,advance,negotiate,migrateDailyTurns} from './engine.js?v=daily1';
 const $=id=>document.getElementById(id);
 const safe=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'US$ '+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(n)+' bi';
@@ -16,10 +16,10 @@ const MAX_ZOOM=120, WORLD_WIDTH=1200;
 const islandById=new Map(islands.map(row=>[row[0],row]));
 const islandOwners=new Set(islands.map(row=>row[1]));
 let state;
-try{state=JSON.parse(localStorage.getItem(key))}catch{}
+try{state=JSON.parse(localStorage.getItem(key));if(state)migrateDailyTurns(state)}catch{}
 let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', mode='auto', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
 const flag=c=>/^[A-Z]{2}$/.test(countries[c][1])?[...countries[c][1]].map(a=>String.fromCodePoint(a.charCodeAt()+127397)).join(''):'◈';
-const date=t=>new Date(Date.UTC(2026,10,14+(t-1)*7)).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'});
+const date=t=>new Date(Date.UTC(2026,10,14+t-1)).toLocaleDateString('pt-BR',{day:'2-digit',month:'short',year:'numeric',timeZone:'UTC'});
 const cap=c=>places[c]?.find(p=>p[3])??places[c]?.[0];
 const svgPoint=(lon,lat)=>[(lon+180)*10/3,(84-lat)*3.5];
 function notice(message){clearTimeout(toastTimer);$('toast').textContent=message;$('toast').classList.add('show');toastTimer=setTimeout(()=>$('toast').classList.remove('show'),4300)}
@@ -45,7 +45,7 @@ function start(code){
 $('close').onclick=()=>$('modal').close();
 $('new').onclick=()=>choose();
 function choose(){
-  modal('Escolha sua nação','<p>Explore o mapa mundial e comande um país. Cada turno corresponde a uma semana.</p><form id="pick" class="form"><label>Buscar país<input id="query" type="search" placeholder="Ex.: Brasil, Japão, França"></label><label>Nação<select id="pick-code"></select></label><div class="hint" id="pick-details"></div>'+(state?'<p class="hint">Iniciar uma campanha substitui a partida salva neste navegador.</p>':'')+'<button class="primary" type="submit">Assumir comando →</button></form>');
+  modal('Escolha sua nação','<p>Explore o mapa mundial e comande um país. Cada turno corresponde a um dia.</p><form id="pick" class="form"><label>Buscar país<input id="query" type="search" placeholder="Ex.: Brasil, Japão, França"></label><label>Nação<select id="pick-code"></select></label><div class="hint" id="pick-details"></div>'+(state?'<p class="hint">Iniciar uma campanha substitui a partida salva neste navegador.</p>':'')+'<button class="primary" type="submit">Assumir comando →</button></form>');
   const normalize=s=>s.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
   function options(q){
     const list=codes.filter(c=>normalize(countries[c][0]).includes(normalize(q)));
@@ -74,7 +74,7 @@ function pickTarget(code,city=0){
 const active=()=>state??sample;
 const origin=()=>places[active().code]?.[originIndex]??cap(active().code);
 const destination=()=>currentRegion()&&atlasCountry===target?regionDestination(currentRegion()):places[target]?.[selected]??cap(target);
-const getRoute=()=>planTransport({a:origin(),b:destination(),from:active().code,to:target,countries,preference:mode,count:Math.max(1,Math.min(active().units,units))});
+const getRoute=()=>quotedPlan({a:origin(),b:destination(),from:active().code,to:target,countries,preference:mode,count:Math.max(1,Math.min(active().units,units))});
 const box=(label,value)=>'<div class="cell"><small>'+label+'</small><b>'+value+'</b></div>';
 function draw(){
   const s=active(),c=countries[s.code],n=countries[target];
@@ -95,7 +95,7 @@ function budget(){
   if(!state)return choose();
   const w=world(state),c=countries[state.code],base=nationalBudget(c,w.economy),tax=taxReference(c);
   const price=round(Math.max(.06,annualDefense(c)/strength(c)*.15));
-  modal('Orçamento nacional','<div class="form"><p>Impostos por dia <b>'+money(dailyTax(c,w.economy))+'</b> · '+tax.rate+'% do PIB '+(tax.year?'(Banco Mundial, '+tax.year+')':'(estimativa do jogo)')+'<br>Total previsto por turno <b>'+money(base)+'</b> · Caixa de defesa <b>'+money(state.treasury)+'</b></p>'+
+  modal('Orçamento nacional','<div class="form"><p>Impostos por dia <b>'+money(dailyTax(c,w.economy))+'</b> · '+tax.rate+'% do PIB '+(tax.year?'(Banco Mundial, '+tax.year+')':'(estimativa do jogo)')+'<br>Total previsto por dia <b>'+money(base)+'</b> · Caixa de defesa <b>'+money(state.treasury)+'</b></p>'+
     Object.entries(sectors).map(([id,[name]])=>'<label>'+name+' (%)<input id="budget-'+id+'" type="number" min="0" max="100" step="1" value="'+w.budget[id]+'"></label>').join('')+
     '<p id="budget-preview" class="hint"></p><button id="apply-budget" class="primary">Salvar orçamento</button><button id="recruit">Mobilizar 5 unidades · '+money(price*5)+'</button></div>');
   const inputs=Object.keys(sectors).map(id=>[id,$('budget-'+id)]);
@@ -117,11 +117,12 @@ function drawPanel(){
   if(tab==='forces')return drawForces();
   if(tab==='trade')return drawTrade();
   const s=active(),r=getRoute(),region=atlasCountry===target?currentRegion():null,available=Math.min(Math.max(1,units),s.units);
-  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(transportLabels).map(([k,label])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><div class="hint" id="route-info">'+(r?routeSummary(r):'Sem rota cadastrada nesta modalidade.')+'</div><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
+  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(transportLabels).map(([k,label])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><div class="hint" id="route-info">'+(r?routeSummary(r):'Sem rota cadastrada nesta modalidade.')+'</div><div class="actions"><button class="primary" id="dispatch" '+(!r?.verified||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
   $('origin').onchange=e=>{originIndex=Number(e.target.value);drawPanel();drawMap()};
   $('destination').onchange=e=>{selected=Number(e.target.value);drawPanel();drawMap()};
   $('mode').onchange=e=>{mode=e.target.value;drawPanel();drawMap()};
-  $('units').oninput=e=>{units=Number(e.target.value);const quote=getRoute();$('route-info').innerHTML=quote?routeSummary(quote):'Sem rota para esta ordem.';drawMap()};
+  $('units').onchange=e=>{units=Math.max(1,Math.trunc(Number(e.target.value)||1));drawPanel();drawMap()};
+  bindRoadQuote(r,'route-info');
   $('war').onclick=()=>{
     if(!state)return choose();
     const opponent=target;
@@ -131,7 +132,7 @@ function drawPanel(){
   $('dispatch').onclick=()=>{
     if(!state)return choose();
     const r=getRoute();
-    if(!r)return notice('Sem rota disponível.');
+    if(!r?.verified)return notice('Calcule o trajeto antes de despachar.');
     const p=destination(),amount=Number($('units').value);
     if(!Number.isInteger(amount)||amount<1||amount>state.units)return notice('Informe uma quantidade válida de unidades.');
     if(state.treasury<r.cost)return notice('Caixa insuficiente para esta missão.');
@@ -206,7 +207,7 @@ function drawMap(){
   const r=tab==='forces'?forceRoute():getRoute();
   const commerce=tradePartners(s.code).map(code=>[seaTrade(s.code,code),world(s).trade[code]&&!world(s).embargoes[code]&&!s.wars[code]?'tradeActive':'trade']);
   const orders=[...s.queues,...(s.transfers??[])];
-  const plotted=[...commerce,...orders.flatMap(order=>(order.legs??[order]).map(leg=>[leg,false])),...(r?(r.legs??[r]).map(leg=>[leg,true]):[])];
+  const plotted=[...commerce,...orders.flatMap(order=>(order.legs??[order]).map(leg=>[leg,false])),...(r?.verified?(r.legs??[r]).map(leg=>[leg,true]):[])];
   $('routes').innerHTML=plotted.map(([path,preview])=>{
     const lines=[[]];
     path.points.forEach((p,i)=>{
@@ -395,7 +396,7 @@ function drawIslandPanel(panel,s){
   const held=owner===s.code||!!s.regions?.[key],war=!!s.wars[owner];
   const base=origin();
   const km=base?Math.round(distance(base,[name,lon,lat])):0;
-  const turns=Math.max(1,Math.ceil(km/1500)),cost=round(.12+km/30000);
+  const turns=Math.max(1,Math.ceil(km/430)),cost=round(.12+km/30000);
   const pending=s.queues.some(order=>order.region?.id===key);
   panel.insertAdjacentHTML('beforeend','<div class="island-detail"><h3>'+safe(name)+'</h3><p class="hint">'+(held?'Sob seu comando':'Território de '+safe(countries[owner][0]))+'</p>'+
     (held?'': '<p class="hint">Expedição simulada · '+format(km)+' km · '+turns+' turno(s) · '+money(cost)+'</p><div class="actions"><button id="island-war" '+(war?'disabled':'')+'>Declarar guerra</button><button id="island-send" class="primary" '+(!war||pending||!s.units||!base?'disabled':'')+'>Enviar expedição</button></div>')+'</div>');
@@ -454,7 +455,30 @@ async function loadCommandAtlas(){
   }catch{if(tab==='forces')notice('Não foi possível carregar suas guarnições.')}
 }
 const homeForces=()=>[...commandAtlas,...atlas.filter(r=>active().regions?.[r[0]]&&atlasCountry!==active().code)];
+const verifiedPlans=new Map();
+function quotedPlan(options){
+  const key=JSON.stringify([options.a,options.b,options.from,options.to,options.kind,options.preference,options.unit,options.count,options.cargo,options.landPath,options.seaPath]);
+  if(verifiedPlans.has(key))return verifiedPlans.get(key);
+  const plan=planTransport(options);
+  return plan&&{...plan,key,options:{count:options.count,unit:options.unit,cargo:options.cargo}};
+}
+function bindRoadQuote(plan,id){
+  const button=$(id).querySelector('[data-road-quote]');
+  if(!button)return;
+  button.onclick=async()=>{
+    button.disabled=true;button.textContent='Consultando as estradas…';
+    try{
+      verifiedPlans.set(plan.key,await verifyTransport(plan,plan.options));
+      if(verifiedPlans.size>100)verifiedPlans.delete(verifiedPlans.keys().next().value);
+      drawPanel();drawMap();
+    }catch(error){
+      button.disabled=false;button.textContent='Recalcular rota';
+      button.nextElementSibling.textContent=error.message||'Falha ao consultar a rede rodoviária.';
+    }
+  };
+}
 function routeSummary(route){
+  if(!route.verified)return '<button type="button" data-road-quote>Calcular pelas estradas</button><p class="hint">Confirme a ligação rodoviária para ver distância, custo e prazo.</p>';
   return format(route.km)+' km · '+route.days+' dia(s) · chegada em '+route.turns+' turno(s) · '+money(route.cost)+
     '<ol class="itinerary">'+route.legs.map(leg=>'<li>'+safe(leg.label)+' · '+safe(leg.from)+' → '+safe(leg.to)+' · '+format(Math.round(leg.km))+' km · '+money(leg.cost)+' <small>'+safe(leg.source)+'</small></li>').join('')+'</ol>';
 }
@@ -469,7 +493,7 @@ function forceRoute(){
     landPath=landSupply(atlas,linksFor(atlas),a[0],b[0],r=>from===code||r===b||!!active().regions?.[r[0]]);
   }
   const seaPath=seaSupply(a[0],b[0]);
-  return planTransport({a:regionDestination(a),b:regionDestination(b),from,to:atlasCountry,countries,landPath,seaPath,
+  return quotedPlan({a:regionDestination(a),b:regionDestination(b),from,to:atlasCountry,countries,landPath,seaPath,
     preference:kind==='air'?'air':kind==='sea'?'sea':transportPreference,kind,unit:forceType,count:forceCount,cargo});
 }
 function drawSupply(){
@@ -497,9 +521,10 @@ function drawForces(){
     '<label>Quantidade<input id="force-count"  type="number" min="1" value="'+forceCount+'"></label>'+
     '<p class="hint">'+(dest?'Destino · '+safe(dest[1])+(dest[2]?' · '+safe(dest[2][0]):''):'Selecione um destino regional.')+'</p>'+
     '<div class="hint" id="force-route">'+(travel?routeSummary(travel):dest?'Sem rota cadastrada para esta combinação.':'')+'</div>'+
-    '<button id="force-send" class="primary" '+(!travel||!available||!state||!friendly&&(cargo||!s.wars[atlasCountry])?'disabled':'')+'>'+(cargo?'Enviar suprimentos':friendly?'Enviar reforço':'Atacar província')+'</button>'+
+    '<button id="force-send" class="primary" '+(!travel?.verified||!available||!state||!friendly&&(cargo||!s.wars[atlasCountry])?'disabled':'')+'>'+(cargo?'Enviar suprimentos':friendly?'Enviar reforço':'Atacar província')+'</button>'+
     (!friendly&&dest&&!s.wars[atlasCountry]?'<p class="hint">Declare guerra ao país na aba Operações para atacar.</p>':'')+
     '<button id="force-recruit" '+(!state||!forceOrigin||!cargo&&equipment[forceType][2]==='sea'&&!portFor(forceOrigin)?'disabled':'')+'>'+(cargo?'Comprar 10 lotes · '+money(.1):'Mobilizar 1 unidade · '+money(equipment[forceType][4]))+'</button></div>';
+  bindRoadQuote(travel,'force-route');
   if($('transport-pref'))$('transport-pref').onchange=e=>{transportPreference=e.target.value;drawForces();drawMap()};
   $('force-origin').onchange=e=>{forceOrigin=e.target.value;drawForces();drawMap()};
   $('force-cargo').onchange=e=>{cargo=e.target.value==='resources';drawForces();drawMap()};
@@ -514,6 +539,7 @@ function drawForces(){
     log(state,'Mobilização: '+equipment[forceType][1]+'.');update();
   };
   $('force-send').onclick=()=>{
+    if(!travel?.verified)return notice('Calcule o trajeto antes de despachar.');
     if(forceCount>available)return notice('A guarnição não tem unidades suficientes.');
     if(state.treasury<travel.cost)return notice('Caixa insuficiente.');
     state.treasury=round(state.treasury-travel.cost);

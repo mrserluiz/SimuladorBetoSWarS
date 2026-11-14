@@ -86,7 +86,7 @@ export const strength = country => Math.max(3,Math.round(10*Math.pow(annualDefen
 export const round = n => +n.toFixed(2);
 export function newCampaign(code,countries) {
   const budget = annualDefense(countries[code]);
-  return {code,turn:1,treasury:round(Math.max(.25,budget*.15)),funding:100,units:strength(countries[code]),relations:{},wars:{},pacts:{},regions:{},occupied:{},queues:[],logs:[],chats:{}};
+  return {code,turn:1,dayTurns:true,treasury:round(Math.max(.25,budget*.15)),funding:100,units:strength(countries[code]),relations:{},wars:{},pacts:{},regions:{},occupied:{},queues:[],logs:[],chats:{}};
 }
 export function log(state,text) {
   state.logs.unshift({turn:state.turn,text});
@@ -95,15 +95,27 @@ export function log(state,text) {
 export function relation(state,code){return state.relations[code]??0}
 export function changeRelation(state,code,n){state.relations[code]=Math.max(-100,Math.min(100,relation(state,code)+n))}
 export const weeklyFunds = (state,country) => annualDefense(country)/52*state.funding/100;
+export function migrateDailyTurns(state){
+  if(state.dayTurns)return;
+  const day=turn=>1+(turn-1)*7;
+  const oldTurn=state.turn;
+  state.turn=day(oldTurn);
+  for(const entry of [...state.logs,...(state.world?.press??[])])entry.turn=day(entry.turn);
+  for(const order of [...state.queues,...(state.transfers??[])]){
+    order.eta=state.turn+Math.max(1,(order.eta-oldTurn)*7);
+  }
+  state.dayTurns=true;
+}
 export function advance(state,countries) {
+  migrateDailyTurns(state);
   state.turn++;
   const country=countries[state.code];
   const fiscal=advanceWorld(state,countries,seaTrade);
   const w=world(state);
   const pactRevenue=Object.keys(state.pacts).filter(code=>!w.embargoes[code]&&!state.wars[code]).length*.015;
-  const income=fiscal.military+fiscal.trade+mineralRevenue(state)+pactRevenue+Object.keys(state.occupied).length*.025;
-  const maintenance=state.units*.0015+Object.keys(state.wars).length*.025;
-  state.treasury=round(Math.max(0,state.treasury+income-maintenance));
+  const income=fiscal.military+(fiscal.trade+mineralRevenue(state)+pactRevenue+Object.keys(state.occupied).length*.025)/7;
+  const maintenance=(state.units*.0015+Object.keys(state.wars).length*.025)/7;
+  state.treasury=+Math.max(0,state.treasury+income-maintenance).toFixed(6);
   if (state.treasury===0 && income<maintenance && state.units>0) {
     state.units--;
     log(state,'Caixa insuficiente para manutenção. Uma unidade foi desmobilizada.');
@@ -149,7 +161,7 @@ export function advance(state,countries) {
       log(state,'Ataque repelido em '+m.city+'. Defesa: '+defense+' · Baixas: '+losses+'.');
     }
   }
-  if (state.turn%3!==0) return;
+  if ((state.turn-1)%21!==0) return;
   for (const code of Object.keys(state.wars)) {
     const strengthRatio=strength(countries[code])/Math.max(1,strength(country));
     if (strengthRatio<.65 || state.units===0) continue;

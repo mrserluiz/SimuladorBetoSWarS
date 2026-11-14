@@ -2,7 +2,7 @@ import {createServer} from 'node:http';
 import {readFile} from 'node:fs/promises';
 import {extname} from 'node:path';
 
-const files=new Map(['index.html','style.css','game.js','engine.js','regions.js','forces.js','pacific.js','logistics.js','transport-data.js','maritime-data.js','tax-data.js','SeaRoute-LICENSE.txt','world-events.js','world-data.json',...['africa','americas','asia','europe','oceania','other'].map(group=>'regions/'+group+'.json')].map(name=>['/'+name,name]));
+const files=new Map(['index.html','style.css','game.js','engine.js','regions.js','forces.js','pacific.js','logistics.js','roads.js','transport-data.js','maritime-data.js','tax-data.js','SeaRoute-LICENSE.txt','world-events.js','world-data.json',...['africa','americas','asia','europe','oceania','other'].map(group=>'regions/'+group+'.json')].map(name=>['/'+name,name]));
 const types={'.txt':'text/plain; charset=utf-8','.html':'text/html; charset=utf-8','.css':'text/css; charset=utf-8','.js':'text/javascript; charset=utf-8','.json':'application/json; charset=utf-8'};
 const key=process.env.OPENAI_API_KEY;
 const host='127.0.0.1', port=Number(process.env.PORT??8080);

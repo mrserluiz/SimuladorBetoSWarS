@@ -1,6 +1,6 @@
 # Meridiano
 
-Primeira versão jogável do SimuladorBetoSWarS. Campanha geopolítica individual por turnos semanais, com 204 territórios no atlas e 241 localidades do Natural Earth.
+Primeira versão jogável do SimuladorBetoSWarS. Campanha geopolítica individual por turnos diários, com 204 territórios no atlas e 241 localidades do Natural Earth.
 
 ## Executar
 
@@ -49,6 +49,6 @@ O mapa se repete horizontalmente ao cruzar o meridiano de 180° e aproxima até 
 
 ## Logística e arrecadação
 
-O planejador compara trajetos terrestres, embarque marítimo e transporte aéreo. A rota marítima usa uma rede de 47 portos e 143 conexões derivadas do [SeaRoute](https://eurostat.github.io/searoute/) via searoute-py 1.6.0. A licença acompanha os dados. As escalas aéreas usam 168 aeroportos do [OurAirports](https://ourairports.com/data/) e um alcance simulado de 5.600 km. O trecho Rio de Janeiro–Belo Horizonte usa dados © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) calculados pelo OSRM. Os outros acessos terrestres usam corredores estimados. Distâncias, transbordo e peso da carga entram no prazo e no custo.
+O planejador compara trajetos terrestres, embarque marítimo e transporte aéreo. A rota marítima usa uma rede de 47 portos e 143 conexões derivadas do [SeaRoute](https://eurostat.github.io/searoute/) via searoute-py 1.6.0. A licença acompanha os dados. As escalas aéreas usam 168 aeroportos do [OurAirports](https://ourairports.com/data/) e um alcance simulado de 5.600 km. O traçado rodoviário consulta dados © [OpenStreetMap contributors](https://www.openstreetmap.org/copyright) calculados pelo OSRM. O envio aguarda uma ligação rodoviária confirmada. Distâncias, transbordo e peso da carga entram no prazo e no custo.
 
-A economia usa a última taxa de [receita tributária em relação ao PIB do Banco Mundial](https://data.worldbank.org/indicator/GC.TAX.TOTL.GD.ZS) disponível desde 2015 para 149 economias. As demais usam uma estimativa de 18%. Cada turno contabiliza sete dias de receita, e a parcela destinada à defesa financia o caixa de operações.
+A economia usa a última taxa de [receita tributária em relação ao PIB do Banco Mundial](https://data.worldbank.org/indicator/GC.TAX.TOTL.GD.ZS) disponível desde 2015 para 149 economias. As demais usam uma estimativa de 18%. Cada turno contabiliza um dia de receita, e a parcela destinada à defesa financia o caixa de operações.

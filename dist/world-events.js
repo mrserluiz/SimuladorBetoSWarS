@@ -10,7 +10,7 @@ export function taxReference(country){
   return {rate,year};
 }
 export const dailyTax=(country,economy=65)=>country[3]*taxReference(country).rate/100/365*(.75+economy/260);
-export const nationalBudget=(country,economy)=>dailyTax(country,economy)*7;
+export const nationalBudget=(country,economy)=>dailyTax(country,economy);
 export const refugeeCorridors={
   BRA:['ARG','URY','PRY','BOL','PER','COL'], ARG:['URY','CHL','PRY','BOL','BRA'],
   URY:['BRA','ARG'], PRY:['BRA','ARG','BOL'], BOL:['PER','BRA','PRY','ARG','CHL'],
@@ -76,19 +76,19 @@ export function advanceWorld(state,countries,route){
   const war=Object.keys(state.wars).length;
   const priorHealth=w.health,priorEconomy=w.economy;
   const reception=Math.min(2,(w.received[state.code]??0)/15000);
-  w.health=clamp(w.health+(p.health-22)*.24+(p.policy-20)*.06-war*.45-reception);
-  w.education=clamp(w.education+(p.education-17)*.23);
-  w.science=clamp(w.science+(p.science-12)*.29+(p.education-17)*.06);
-  w.economy=clamp(w.economy+(p.science-12)*.1+(p.policy-20)*.09+trade*2-war*.5-Object.keys(w.embargoes).length*.16);
-  w.approval=clamp(w.approval+(p.policy-20)*.18+(w.health-priorHealth)*.28+(w.economy-priorEconomy)*.5-war*.3);
+  w.health=clamp(w.health+((p.health-22)*.24+(p.policy-20)*.06-war*.45-reception)/7);
+  w.education=clamp(w.education+((p.education-17)*.23)/7);
+  w.science=clamp(w.science+((p.science-12)*.29+(p.education-17)*.06)/7);
+  w.economy=clamp(w.economy+((p.science-12)*.1+(p.policy-20)*.09+trade*2-war*.5-Object.keys(w.embargoes).length*.16)/7);
+  w.approval=clamp(w.approval+((p.policy-20)*.18+(w.health-priorHealth)*.28+(w.economy-priorEconomy)*.5-war*.3)/7);
   const previousEconomies=w.nationalEconomies??{};
   w.nationalEconomies=Object.fromEntries(Object.entries(countries).map(([code,country])=>{
     const previous=previousEconomies[code], ownNation=code===state.code;
     const daily=dailyTax(country,ownNation?w.economy:state.wars[code]?57:65);
-    return [code,{daily,weekly:daily*7,total:(previous?.total??0)+daily*7}];
+    return [code,{daily,total:(previous?.total??0)+daily}];
   }));
-  const nextBudget=w.nationalEconomies[state.code].weekly;
-  w.finance={daily:nextBudget/7,taxes:nextBudget,total:w.nationalEconomies[state.code].total,civil:nextBudget*(100-p.military)/100,military:nextBudget*p.military/100,trade};
+  const nextBudget=w.nationalEconomies[state.code].daily;
+  w.finance={daily:nextBudget,taxes:nextBudget,total:w.nationalEconomies[state.code].total,civil:nextBudget*(100-p.military)/100,military:nextBudget*p.military/100,trade};
   if(w.health<48&&!w.crises.health){
     w.crises.health=true;report(state,'Saúde pública',own[0],'A rede de saúde de '+own[0]+' entrou em alerta por queda da capacidade de atendimento.');
   }else if(w.health>=55&&w.crises.health){
@@ -99,18 +99,18 @@ export function advanceWorld(state,countries,route){
   }else if(w.economy>=55&&w.crises.economy){
     delete w.crises.economy;report(state,'Economia',own[0],own[0]+' anunciou recuperação da atividade econômica.');
   }
-  if(state.turn%3===0){
+  if((state.turn-1)%21===0){
     for(const code of Object.keys(state.wars)){
       const wave=(w.displacement[code]??0)+1;
       w.displacement[code]=wave;
       relocate(state,code,1400+wave*320,countries);
     }
   }
-  if(state.turn%4===0){
+  if((state.turn-1)%28===0){
     const reporters=[...new Set(Object.keys(countries).filter(code=>code!==state.code&&countries[code][3]>0))].sort();
     if(reporters.length){
       const code=reporters[(state.turn*13)%reporters.length],name=countries[code][0];
-      const category=state.turn%8===0?'Saúde pública':'Economia';
+      const category=(state.turn-1)%56===0?'Saúde pública':'Economia';
       report(state,category,name,category==='Economia'?name+' divulga seu boletim de comércio e acompanha as rotas abertas no cenário.':name+' divulga um boletim de vigilância sanitária em portos e fronteiras.');
     }
   }

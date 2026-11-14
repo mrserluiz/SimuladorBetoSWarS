@@ -1,4 +1,5 @@
-import {airports,roadSamples} from './transport-data.js';
+import {verifyRoad} from './roads.js';
+import {airports} from './transport-data.js';
 import {distance,route} from './engine.js';
 import {ports,maritimeEdges} from './maritime-data.js';
 
@@ -16,13 +17,10 @@ const name=p=>p[4]&&typeof p[4]==='string'?p[4]:p[0];
 const roadDistance=(a,b)=>Math.max(1,distance(a,b)*1.22);
 
 function roadLeg(a,b){
-  const match=roadSamples.find(([from,to])=>from===a[0]&&to===b[0]||from===b[0]&&to===a[0]);
-  if(!match)return {mode:'land',points:[a,b],km:roadDistance(a,b),source:'Corredor terrestre estimado'};
-  const geometry=match[0]===a[0]?match[3]:[...match[3]].reverse();
-  return {mode:'land',points:[a,...geometry.map(([x,y])=>['',x,y]),b],km:match[2],source:'OpenStreetMap / OSRM'};
+  return {mode:'land',points:[a,b],km:roadDistance(a,b),source:'Aguardando traçado rodoviário'};
 }
 function roadLegs(points){
-  return points.slice(1).map((p,i)=>roadLeg(points[i],p));
+  return [{mode:'land',points,km:pointsKm(points)*1.22,source:'Aguardando traçado rodoviário'}];
 }
 function shortest(start,finish,neighbors,weight){
   const scores=new Map([[start,0]]),previous=new Map(),visited=new Set();
@@ -78,14 +76,14 @@ function totalPlan(legs,count,unit,cargo){
   const breakdown=legs.map(leg=>{
     const s=specs[leg.mode];
     return {...leg,label:s.label,from:name(leg.points[0]),to:name(leg.points.at(-1)),cost:s.base+leg.km*s.rate*(.18+load*.025),
-      days:leg.km/s.speed*7+s.load+(leg.mode==='sea'?Math.floor(load/50)*.5:leg.mode==='air'?Math.floor(load/18)*.25:0)};
+      days:(leg.hours===undefined?leg.km/s.speed*7:Math.max(leg.km/320,leg.hours/8))+s.load+(leg.mode==='sea'?Math.floor(load/50)*.5:leg.mode==='air'?Math.floor(load/18)*.25:0)};
   });
   const km=Math.round(breakdown.reduce((n,p)=>n+p.km,0));
   const days=Math.max(1,Math.ceil(breakdown.reduce((n,p)=>n+p.days,0)));
   const cost=Math.max(.01,Math.ceil(breakdown.reduce((n,p)=>n+p.cost,0)*100)/100);
   const mode=legs.some(l=>l.mode==='air')?'air':legs.some(l=>l.mode==='sea')?'sea':'land';
   const points=legs.flatMap(l=>l.points);
-  return {mode,km,days,turns:Math.ceil(days/7),cost,points,legs:breakdown,name:breakdown[0].from+' → '+breakdown.at(-1).to};
+  return {mode,km,days,turns:days,verified:legs.every(l=>l.mode!=='land'||l.hours!==undefined),cost,points,legs:breakdown,name:breakdown[0].from+' → '+breakdown.at(-1).to};
 }
 
 export function planTransport({a,b,from,to,countries,preference='auto',landPath,seaPath,kind='land',unit='infantry',count=1,cargo=false}){
@@ -104,4 +102,16 @@ export function planTransport({a,b,from,to,countries,preference='auto',landPath,
     if(path?.length)candidates.push(path);
   }
   return candidates.map(legs=>totalPlan(legs,count,unit,cargo)).sort((x,y)=>x.cost-y.cost||x.days-y.days)[0]??null;
+}
+
+export async function verifyTransport(plan,{count=1,unit='infantry',cargo=false}={}){
+  const legs=[];
+  for(const leg of plan.legs){
+    if(leg.mode!=='land'){legs.push(leg);continue}
+    if(almostSame(leg.points[0],leg.points.at(-1)))continue;
+    const road=await verifyRoad(leg.points);
+    legs.push({...leg,...road,source:'OpenStreetMap · OSRM'});
+  }
+  if(!legs.length)throw Error('Origem e destino estão no mesmo ponto.');
+  return totalPlan(legs,count,unit,cargo);
 }
