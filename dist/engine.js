@@ -1,3 +1,4 @@
+import {mineralRevenue} from './regions.js';
 export const MODES = {
   land: {label:'Terrestre', speed:800, rate:.12},
   air: {label:'Aérea', speed:3200, rate:.28},
@@ -75,7 +76,7 @@ export const strength = country => Math.max(3,Math.round(10*Math.pow(annualDefen
 export const round = n => +n.toFixed(2);
 export function newCampaign(code,countries) {
   const budget = annualDefense(countries[code]);
-  return {code,turn:1,treasury:round(Math.max(.25,budget*.15)),funding:100,units:strength(countries[code]),relations:{},wars:{},pacts:{},occupied:{},queues:[],logs:[],chats:{}};
+  return {code,turn:1,treasury:round(Math.max(.25,budget*.15)),funding:100,units:strength(countries[code]),relations:{},wars:{},pacts:{},regions:{},occupied:{},queues:[],logs:[],chats:{}};
 }
 export function log(state,text) {
   state.logs.unshift({turn:state.turn,text});
@@ -87,7 +88,7 @@ export const weeklyFunds = (state,country) => annualDefense(country)/52*state.fu
 export function advance(state,countries) {
   state.turn++;
   const country=countries[state.code];
-  const income=weeklyFunds(state,country)+Object.keys(state.pacts).length*.015+Object.keys(state.occupied).length*.025;
+  const income=weeklyFunds(state,country)+mineralRevenue(state)+Object.keys(state.pacts).length*.015+Object.keys(state.occupied).length*.025;
   const maintenance=state.units*.0015+Object.keys(state.wars).length*.025;
   state.treasury=round(Math.max(0,state.treasury+income-maintenance));
   if (state.treasury===0 && income<maintenance && state.units>0) {
@@ -103,13 +104,25 @@ export function advance(state,countries) {
       log(state,'Missão em '+m.city+' concluída. As unidades voltaram à reserva.');
       continue;
     }
+    if(m.region && state.regions?.[m.region.id]){
+      state.units+=m.units;
+      log(state,m.region.name+' já está sob seu controle. A força voltou à reserva.');
+      continue;
+    }
     const population = m.population||1;
-    const defense=Math.max(2,Math.round(strength(other)*(m.capital?.33:.20)+Math.log10(population)/2-(state.occupied[m.to]?.length||0)*2));
+    const defenseShare=m.capital ? .33 : m.region ? .14 : .20;
+    const defense=Math.max(2,Math.round(strength(other)*defenseShare+Math.log10(population)/2-(state.occupied[m.to]?.length||0)*2));
     const attack=m.units*({land:1,air:.87,sea:.92}[m.mode]);
     const won=attack>=defense;
     const losses=Math.min(m.units,Math.max(1,Math.round(won?defense*.27:m.units*.55)));
     state.units+=m.units-losses;
     if(won) {
+      if(m.region){
+        (state.regions??={})[m.region.id]={...m.region,country:m.to};
+        const deposits=m.region.resources.map(site=>site[1]+' em '+site[0]);
+        log(state,m.region.name+' foi ocupada. Baixas: '+losses+'.'+(deposits.length?' Recursos capturados: '+deposits.join(', ')+'.':''));
+        continue;
+      }
       (state.occupied[m.to]??=[]).push(m.city);
       if(m.capital) {
         delete state.wars[m.to];

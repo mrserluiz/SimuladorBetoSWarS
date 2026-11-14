@@ -1,3 +1,4 @@
+import {regionsFor,regionDestination,mineralRevenue} from './regions.js';
 import {MODES,route,annualDefense,strength,round,newCampaign,log,relation,changeRelation,weeklyFunds,advance,negotiate} from './engine.js';
 const $=id=>document.getElementById(id);
 const safe=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -17,11 +18,14 @@ function notice(message){clearTimeout(toastTimer);$('toast').textContent=message
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{}}
 function update(){save();draw()}
 function modal(title,body){$('modal-title').textContent=title;$('modal-body').innerHTML=body;if(!$('modal').open)$('modal').showModal()}
+let atlas=[], regionId=null, atlasCountry=null, atlasStatus="", atlasRequest=0;
+const currentRegion=()=>atlas.find(r=>r[0]===regionId);
 const sample=newCampaign('BRA',countries);
 function start(code){
   state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;
   log(state,'Campanha iniciada. '+countries[code][0]+' está sob seu comando.');
-  $('modal').close();reset();update();notice('Comando assumido: '+countries[code][0]);
+  atlas=[];regionId=null;atlasCountry=null;
+  $('modal').close();reset();update();if(layer==='regioes')loadAtlas();notice('Comando assumido: '+countries[code][0]);
 }
 $('close').onclick=()=>$('modal').close();
 $('new').onclick=()=>choose();
@@ -40,18 +44,19 @@ function choose(){
 }
 function safeText(s){return s??'—'}
 $('guide').onclick=()=>modal('Como jogar','<ol><li>Escolha uma nação e clique em outro território para inspecioná-lo.</li><li>Use a aba Diplomacia para negociar comércio ou cessar-fogo. Declare guerra para disputar cidades e capitais.</li><li>Selecione origem, destino e rota. Envie unidades e avance turnos para resolver a missão.</li><li>Clique no cartão Orçamento para ajustar o repasse e mobilizar unidades. O registro mostra receitas, perdas e ações estrangeiras.</li></ol><p>Arraste o mapa e use a rolagem ou os controles para aproximar. Sua campanha é salva neste navegador.</p>');
-$('sources').onclick=()=>modal('Dados e metodologia','<p><b>Economia.</b> PIB nominal em dólares, ano-base 2025, <a href="https://data.imf.org/Datasets/WEO" target="_blank" rel="noopener">FMI World Economic Outlook</a>. O cenário usa a edição de outubro de 2026.</p><p><b>Defesa.</b> Gasto militar 2025 de 40 países do <a href="https://www.sipri.org/publications/2026/sipri-fact-sheets/trends-world-military-expenditure-2025" target="_blank" rel="noopener">SIPRI</a>. Nos demais, o jogo estima 1,7% do PIB com piso de US$ 0,01 bi. O caixa inicial usa 15% do gasto de referência com piso de US$ 0,25 bi. O repasse semanal é gasto anual ÷ 52 × alocação.</p><p><b>Força.</b> Unidades abstratas calculadas com gasto de defesa e PIB. O índice inicial arredonda 10 × defesa<sup>0,48</sup> + 2 × PIB<sup>0,35</sup>, com piso de três unidades. Distância, modalidade e unidades afetam as missões.</p><p><b>Mapa.</b> Fronteiras e localidades do <a href="https://www.naturalearthdata.com/downloads/110m-cultural-vectors/" target="_blank" rel="noopener">Natural Earth</a>, escala 1:110 milhões. As rotas usam pontos de passagem selecionados e estimativas de distância, com cobertura parcial.</p>');
+$('sources').onclick=()=>modal('Dados e metodologia','<p><b>Economia.</b> PIB nominal em dólares, ano-base 2025, <a href="https://data.imf.org/Datasets/WEO" target="_blank" rel="noopener">FMI World Economic Outlook</a>. O cenário usa a edição de outubro de 2026.</p><p><b>Defesa.</b> Gasto militar 2025 de 40 países do <a href="https://www.sipri.org/publications/2026/sipri-fact-sheets/trends-world-military-expenditure-2025" target="_blank" rel="noopener">SIPRI</a>. Nos demais, o jogo estima 1,7% do PIB com piso de US$ 0,01 bi. O caixa inicial usa 15% do gasto de referência com piso de US$ 0,25 bi. O repasse semanal é gasto anual ÷ 52 × alocação.</p><p><b>Força.</b> Unidades abstratas calculadas com gasto de defesa e PIB. O índice inicial arredonda 10 × defesa<sup>0,48</sup> + 2 × PIB<sup>0,35</sup>, com piso de três unidades. Distância, modalidade e unidades afetam as missões.</p><p><b>Mapa.</b> Fronteiras e localidades do <a href="https://www.naturalearthdata.com/downloads/110m-cultural-vectors/" target="_blank" rel="noopener">Natural Earth</a>, escala 1:110 milhões. As rotas usam pontos de passagem selecionados e estimativas de distância, com cobertura parcial.</p><p><b>Províncias e minérios.</b> Fronteiras administrativas e capitais disponíveis do <a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/" target="_blank" rel="noopener">Natural Earth 1:10 milhões</a>. Cada área mineral tem fonte própria e receita definida para o jogo.</p>');
 $('next').onclick=()=>{if(!state)return choose();advance(state,countries);update();notice('Turno '+state.turn+' · '+date(state.turn))};
 function pickTarget(code,city=0){
   if(!countries[code])return;
-  if(code===state?.code){originIndex=city;drawPanel();drawMap();notice('Origem: '+(places[code]?.[city]?.[0]??countries[code][0]));return}
-  target=code;selected=city;
+  if(code===active().code){if(layer==='regioes')loadAtlas(code);originIndex=city;drawPanel();drawMap();notice('Origem: '+(places[code]?.[city]?.[0]??countries[code][0]));return}
+  target=code;selected=city;regionId=null;
+  if(layer==='regioes')loadAtlas();
   if(!route(active().code,target,origin(),destination(),mode))mode=['land','sea','air'].find(m=>route(active().code,target,origin(),destination(),m))??'air';
   draw();
 }
 const active=()=>state??sample;
 const origin=()=>places[active().code]?.[originIndex]??cap(active().code);
-const destination=()=>places[target]?.[selected]??cap(target);
+const destination=()=>currentRegion()&&atlasCountry===target?regionDestination(currentRegion()):places[target]?.[selected]??cap(target);
 const getRoute=()=>route(active().code,target,origin(),destination(),mode);
 const box=(label,value)=>'<div class="cell"><small>'+label+'</small><b>'+value+'</b></div>';
 function draw(){
@@ -65,7 +70,7 @@ function draw(){
   $('nation').innerHTML='<div class="nation-title"><div class="flag">'+flag(target)+'</div><div><h2>'+safe(n[0])+'</h2><p class="nation-meta">'+safe(cap(target)?.[3]?cap(target)[0]+' · Capital':cap(target)?.[0]||n[2]||'Território')+'</p></div><span class="status '+(war?'war':'')+'">'+(war?'EM GUERRA':conquered?'OCUPADA':pact?'ACORDO':'EM PAZ')+'</span></div><div class="nation-data">'+box('PIB 2025',n[3]?money(n[3]):'Sem dado')+box('DEFESA '+(n[4]==null?'ESTIMADA':'2025'),money(annualDefense(n)))+box('FORÇA INICIAL',strength(n)+' un.')+box('RELAÇÃO',String(relation(s,target)))+'</div>';
   $('log').innerHTML=s.logs.length?s.logs.slice(0,8).map(l=>'<div class="line"><time>T'+l.turn+'</time><span>'+safe(l.text)+'</span></div>').join(''):'<p class="empty">O registro começa quando você assume uma nação.</p>';
   $('missions').innerHTML=s.queues.length?s.queues.map(m=>'<div class="line"><time>T'+m.eta+'</time><span><b>'+safe(m.city)+'</b> · '+MODES[m.mode].label+' · '+m.units+' un.</span></div>').join(''):'<p class="empty">Nenhuma ordem em trânsito.</p>';
-  drawPanel();drawMap();
+  drawPanel();drawMap();drawRegionalPanel();
 }
 function budget(){
   if(!state)return choose();
@@ -81,8 +86,8 @@ const cityOptions=(c,i)=> (places[c]??[]).map((p,j)=>'<option value="'+j+'" '+(i
 function drawPanel(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
   if(tab==='chat')return drawChat();
-  const s=active(),r=getRoute(),available=Math.min(Math.max(1,units),s.units);
-  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+cityOptions(target,selected)+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(MODES).map(([k,m])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+m.label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><p class="hint" id="route-info">'+(r?safe(r.name)+'<br>'+format(r.km)+' km · '+r.turns+' turno(s) · '+money(r.cost):'Sem rota cadastrada nesta modalidade.')+'</p><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
+  const s=active(),r=getRoute(),region=atlasCountry===target?currentRegion():null,available=Math.min(Math.max(1,units),s.units);
+  $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(MODES).map(([k,m])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+m.label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><p class="hint" id="route-info">'+(r?safe(r.name)+'<br>'+format(r.km)+' km · '+r.turns+' turno(s) · '+money(r.cost):'Sem rota cadastrada nesta modalidade.')+'</p><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
   $('origin').onchange=e=>{originIndex=Number(e.target.value);drawPanel();drawMap()};
   $('destination').onchange=e=>{selected=Number(e.target.value);drawPanel();drawMap()};
   $('mode').onchange=e=>{mode=e.target.value;drawPanel();drawMap()};
@@ -98,10 +103,11 @@ function drawPanel(){
     const p=destination(),amount=Number($('units').value);
     if(!Number.isInteger(amount)||amount<1||amount>state.units)return notice('Informe uma quantidade válida de unidades.');
     if(state.treasury<r.cost)return notice('Caixa insuficiente para esta missão.');
-    if(state.occupied[target]?.includes(p[0]))return notice('Esta cidade já está sob seu controle.');
-    if(state.queues.some(q=>q.to===target&&q.city===p[0]))return notice('Já existe uma missão em trânsito para esta cidade.');
+    if(region?state.regions?.[region[0]]:state.occupied[target]?.includes(p[0]))return notice('Esta cidade já está sob seu controle.');
+    if(state.queues.some(q=>q.to===target&&(region?q.region?.id===region[0]:!q.region&&q.city===p[0])))return notice('Já existe uma missão em trânsito para esta cidade.');
     state.treasury=round(state.treasury-r.cost);state.units-=amount;
-    state.queues.push({...r,from:state.code,to:target,city:p[0],capital:p[3],population:p[4],units:amount,eta:state.turn+r.turns});
+    const territory=region?{id:region[0],name:region[1],resources:region[3]}:null;
+    state.queues.push({...r,from:state.code,to:target,city:p[0],capital:p[3],population:p[4],units:amount,eta:state.turn+r.turns,region:territory});
     log(state,amount+' un. enviadas para '+p[0]+'. Chegada no turno '+(state.turn+r.turns)+'.');update();notice('Ordem registrada.');
   };
 }
@@ -134,7 +140,7 @@ async function send(message,proposal){
   }catch{notice('Resposta das regras de campanha mantida.')}finally{pendingChat=false}
 }
 document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;drawPanel()});
-document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>{layer=b.dataset.layer;document.querySelectorAll('[data-layer]').forEach(x=>x.classList.toggle('on',x===b));drawMap()});
+document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>{layer=b.dataset.layer;if(layer==='regioes')loadAtlas();else regionId=null;document.querySelectorAll('[data-layer]').forEach(x=>x.classList.toggle('on',x===b));draw()});
 const palette={Europe:'#4b6574',Americas:'#445f59',Asia:'#526471',Africa:'#566057',Oceania:'#4e6170'};
 const fromColor='#397e68', targetColor='#52787d', warColor='#8c494f', occupiedColor='#8d784f';
 function fillCountry(code){
@@ -163,6 +169,7 @@ function drawMap(){
     });
   }
   $('markers').innerHTML=markers.join('');
+  drawAtlas();
   const r=getRoute();
   const plotted=[...s.queues.map(r=>[r,false]),...(r?[[r,true]]:[])];
   $('routes').innerHTML=plotted.map(([path,preview])=>{
@@ -179,7 +186,7 @@ function drawMap(){
     });
     return lines.map(points=>'<polyline points="'+points.join(' ')+'" fill="none" stroke="'+(preview?'#80e7bc':'#f2bd6a')+'" opacity=".94" stroke-width="'+(preview?1.8:2.3)+'" stroke-dasharray="'+(preview?'4 4':'7 3')+'" vector-effect="non-scaling-stroke" pointer-events="none"/>').join('');
   }).join('');
-  $('legend').innerHTML=[[fromColor,'Sob seu comando'],[warColor,'Em guerra'],[occupiedColor,'Capitulou'],['#e6c784','Capital'],['#80e7bc','Rota prevista'],...(layer==='economia'?[['#6ec2a6','PIB mais alto']]:[])].map(([color,label])=>'<span><i class="key" style="background:'+color+'"></i>'+label+'</span>').join('');
+  $('legend').innerHTML=[[fromColor,'Sob seu comando'],[warColor,'Em guerra'],[occupiedColor,'Capitulou'],['#e6c784','Capital'],['#80e7bc','Rota prevista'],...(layer==='regioes'?[['#e9d7a6','Capital regional'],['#dbaaef','Área mineral'],['#c9a55b','Província ocupada']]:[]),...(layer==='economia'?[['#6ec2a6','PIB mais alto']]:[])].map(([color,label])=>'<span><i class="key" style="background:'+color+'"></i>'+label+'</span>').join('');
   $('mapstatus').textContent=Object.keys(countries).length+' TERRITÓRIOS · '+Object.values(places).reduce((n,p)=>n+p.length,0)+' LOCALIDADES';
   updateCamera();
 }
@@ -210,7 +217,7 @@ map.onpointerdown=e=>{
   const point=coordinates(e);
   pointers.set(e.pointerId,point);
   map.setPointerCapture(e.pointerId);
-  if(pointers.size===1)gesture={start:point,from:[...offset],clicked:e.target.closest('[data-code]'),moved:false};
+  if(pointers.size===1)gesture={start:point,from:[...offset],clicked:e.target.closest('[data-region],[data-code]'),moved:false};
   else gesture={...pinch(),from:[...offset],zoom,moved:true};
 };
 map.onpointermove=e=>{
@@ -238,7 +245,10 @@ function endPointer(e,cancelled){
     return;
   }
   const clicked=gesture.clicked;
-  if(!cancelled&&clicked&&!gesture.moved)pickTarget(clicked.dataset.code,Number(clicked.dataset.city??0));
+  if(!cancelled&&clicked&&!gesture.moved){
+    if(clicked.dataset.region)selectRegion(clicked.dataset.region);
+    else pickTarget(clicked.dataset.code,Number(clicked.dataset.city??0));
+  }
   gesture=null;
 }
 map.onpointerup=e=>endPointer(e,false);
@@ -248,5 +258,48 @@ document.querySelectorAll('[data-mobile-tab]').forEach(link=>link.onclick=()=>{
   tab=link.dataset.mobileTab;
   drawPanel();
 });
+async function loadAtlas(code=target){
+  const request=++atlasRequest;
+  atlasCountry=code;regionId=null;atlas=[];atlasStatus='Carregando províncias…';
+  drawRegionalPanel();
+  try{
+    const result=await regionsFor(code,countries);
+    if(request!==atlasRequest)return;
+    atlas=result;atlasStatus=result.length?'':'Nenhuma subdivisão disponível para este território.';
+  }catch{if(request!==atlasRequest)return;atlasStatus='Atlas regional indisponível. Selecione o país novamente para tentar.'}
+  draw();
+}
+function selectRegion(id){
+  regionId=id||null;
+  if(atlasCountry===target&&!getRoute())mode='air';
+  draw();
+}
+function drawRegionalPanel(){
+  const panel=$('regional-panel');
+  panel.hidden=layer!=='regioes';
+  if(panel.hidden)return;
+  const region=currentRegion(),s=active();
+  const options=atlas.map(r=>'<option value="'+safe(r[0])+'" '+(r[0]===regionId?'selected':'')+'>'+safe(r[1])+(r[3].length?' ◆':'')+'</option>').join('');
+  const resources=region?.[3].map(site=>'<li><a href="'+safe(site[5])+'" target="_blank" rel="noopener">'+safe(site[0])+'</a> · '+safe(site[1])+' · '+money(site[4])+'/turno</li>').join('');
+  const owned=Object.values(s.regions??{});
+  panel.innerHTML='<div class="form"><label>País no atlas<select id="atlas-country">'+codes.map(code=>'<option value="'+code+'" '+(code===atlasCountry?'selected':'')+'>'+safe(countries[code][0])+'</option>').join('')+'</select></label><label>Estado ou província<select id="region-select"><option value="">Visão nacional</option>'+options+'</select></label>'+
+    (atlasStatus?'<p class="hint">'+atlasStatus+'</p>':'')+
+    (region?'<p class="hint">'+(region[2]?'Capital local · '+safe(region[2][0]):'Capital sem registro · objetivo regional')+(atlasCountry===s.code||s.regions?.[region[0]]?' · Sob seu comando':'')+'</p>':'')+
+    (resources?'<ul class="deposits">'+resources+'</ul>':'')+
+    '<p class="hint">'+owned.length+' região(ões) ocupada(s) · Receita mineral simulada '+money(mineralRevenue(s))+'/turno.</p></div>';
+  $('atlas-country').onchange=e=>{const code=e.target.value;if(code===s.code){loadAtlas(code);draw()}else pickTarget(code)};
+  $('region-select').onchange=e=>selectRegion(e.target.value);
+}
+function drawAtlas(){
+  if(layer!=='regioes'){$('regions').replaceChildren();return}
+  const s=active();
+  $('regions').innerHTML=atlas.map(r=>{
+    const id=safe(r[0]), selected=r[0]===regionId, occupied=!!s.regions?.[r[0]];
+    const marker=(lon,lat,title,kind)=>{const [x,y]=svgPoint(lon,lat);return '<circle data-region="'+id+'" class="regional-marker '+kind+'" cx="'+x+'" cy="'+y+'" r="'+(kind==='mineral'?3.4:2.4)/Math.sqrt(zoom)+'"><title>'+safe(title)+'</title></circle>'};
+    const shape=r[4]?'<path data-region="'+id+'" class="region-shape '+(selected?'chosen ':'')+(occupied?'held':'')+'" d="'+r[4]+'"><title>'+safe(r[1])+'</title></path>':'';
+    const places=(r[2]&&(zoom>=1.7||selected)?marker(r[2][1],r[2][2],r[2][0],'regional-capital'):'')+r[3].map(site=>marker(site[2],site[3],site[0]+' · '+site[1],'mineral')).join('');
+    return [shape,places];
+  }).reduce(([shapes,markers],[shape,points])=>[shapes+shape,markers+points],['','']).join('');
+}
 draw();
 if(!state)choose();

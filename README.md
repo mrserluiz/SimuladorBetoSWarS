@@ -22,3 +22,11 @@ O servidor local detecta `OPENAI_API_KEY` no ambiente. Com essa variável config
 - [SIPRI, gasto militar 2025](https://www.sipri.org/publications/2026/sipri-fact-sheets/trends-world-military-expenditure-2025). O cenário incorpora os 40 países da tabela. Para os demais, estima 1,7% do PIB com piso de US$ 0,01 bi. Quando falta PIB, a interface indica a ausência do dado.
 - [Natural Earth](https://www.naturalearthdata.com/downloads/110m-cultural-vectors/). Fronteiras e localidades em escala 1:110 milhões. A malha terrestre e marítima tem corredores selecionados, com rotas aéreas aproximadas entre cidades. O jogo usa distância em segmentos e velocidade por modalidade.
 - As forças são unidades abstratas calculadas a partir do gasto militar e do PIB. A conquista de uma capital encerra a guerra com o governo correspondente. O cenário começa em paz e pode divergir da geopolítica real.
+
+## Estados, províncias e minerais
+
+Ative **Províncias** no mapa e escolha um país e uma subdivisão. Em guerra, uma vitória no objetivo regional ocupa o território e transfere as áreas minerais cadastradas. A receita mineral entra a partir do turno seguinte. A captura da capital nacional ainda é uma operação separada.
+
+O atlas administrativo usa o Natural Earth 1:10 milhões. Quando a fonte não identifica uma capital local, o mapa usa um ponto regional e sinaliza a ausência. As áreas minerais são uma seleção documentada em `data/mineral-sites.json` e suas receitas são valores de jogo.
+
+Para regenerar o atlas, rode `python data/build-regions.py CAMINHO_ADMIN1.geojson CAMINHO_POPULATED_PLACES.geojson` com as duas camadas 1:10 milhões do Natural Earth.

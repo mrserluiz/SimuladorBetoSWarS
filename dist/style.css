@@ -35,3 +35,11 @@ dialog{max-width:min(92vw,520px);width:100%;max-height:88vh;background:#14212c;b
   #toast{bottom:calc(62px + env(safe-area-inset-bottom));right:10px}dialog{max-height:85dvh}
 }
 @media(max-width:360px){.top-actions .quiet{padding-inline:4px}.metric{grid-template-columns:minmax(0,1fr)}.metric .icon{display:none}.layers{margin-left:0}.actions{gap:5px}.actions button{padding-inline:6px}}
+#region-select{width:100%}
+#regional-panel{padding:12px 15px;border-top:1px solid var(--line)}
+.region-shape{fill:#3b5b63;fill-opacity:.58;stroke:#a1b1ae;stroke-width:.65;vector-effect:non-scaling-stroke;cursor:pointer}
+.region-shape:hover,.region-shape.chosen{fill:#509c86;fill-opacity:.8;stroke:#dbfff2;stroke-width:1.1}
+.region-shape.held{fill:#c9a55b;fill-opacity:.84}
+.regional-marker{stroke:#13202a;stroke-width:1;vector-effect:non-scaling-stroke;cursor:pointer}
+.regional-capital{fill:#e9d7a6}.mineral{fill:#dbaaef}
+.deposits{padding-left:17px;margin:0;font-size:12px;color:var(--muted)}.deposits a{color:var(--mint)}
