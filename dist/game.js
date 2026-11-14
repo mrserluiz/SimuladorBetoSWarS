@@ -1,5 +1,6 @@
+import {equipment,portFor,regionalLinks,landSupply,seaSupply,orderTravel,garrison,changeGarrison,seedForces} from './forces.js?v=forces1';
 import {regionsFor,regionDestination,mineralRevenue} from './regions.js';
-import {MODES,route,annualDefense,strength,round,newCampaign,log,relation,changeRelation,weeklyFunds,advance,negotiate} from './engine.js';
+import {MODES,route,annualDefense,strength,round,newCampaign,log,relation,changeRelation,weeklyFunds,distance,advance,negotiate} from './engine.js?v=forces1';
 const $=id=>document.getElementById(id);
 const safe=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'US$ '+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(n)+' bi';
@@ -18,6 +19,9 @@ function notice(message){clearTimeout(toastTimer);$('toast').textContent=message
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{}}
 function update(){save();draw()}
 function modal(title,body){$('modal-title').textContent=title;$('modal-body').innerHTML=body;if(!$('modal').open)$('modal').showModal()}
+let commandAtlas=[], commandRequest=0, forceOrigin='', forceType='infantry', forceCount=1, supplyVisible=false;
+const linkCache=new WeakMap();
+const linksFor=list=>{if(!linkCache.has(list))linkCache.set(list,regionalLinks(list,distance));return linkCache.get(list)};
 let atlas=[], regionId=null, atlasCountry=null, atlasStatus="", atlasRequest=0;
 const currentRegion=()=>atlas.find(r=>r[0]===regionId);
 const sample=newCampaign('BRA',countries);
@@ -25,7 +29,8 @@ function start(code){
   state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;
   log(state,'Campanha iniciada. '+countries[code][0]+' está sob seu comando.');
   atlas=[];regionId=null;atlasCountry=null;
-  $('modal').close();reset();update();if(layer==='regioes')loadAtlas(code);notice('Comando assumido: '+countries[code][0]);
+  commandAtlas=[];forceOrigin='';forceType='infantry';forceCount=1;
+  $('modal').close();reset();update();loadCommandAtlas();if(layer==='regioes')loadAtlas(code);notice('Comando assumido: '+countries[code][0]);
 }
 $('close').onclick=()=>$('modal').close();
 $('new').onclick=()=>choose();
@@ -69,7 +74,8 @@ function draw(){
   const war=s.wars[target],pact=s.pacts[target],conquered=s.occupied[target]?.includes(cap(target)?.[0]);
   $('nation').innerHTML='<div class="nation-title"><div class="flag">'+flag(target)+'</div><div><h2>'+safe(n[0])+'</h2><p class="nation-meta">'+safe(cap(target)?.[3]?cap(target)[0]+' · Capital':cap(target)?.[0]||n[2]||'Território')+'</p></div><span class="status '+(war?'war':'')+'">'+(war?'EM GUERRA':conquered?'OCUPADA':pact?'ACORDO':'EM PAZ')+'</span></div><div class="nation-data">'+box('PIB 2025',n[3]?money(n[3]):'Sem dado')+box('DEFESA '+(n[4]==null?'ESTIMADA':'2025'),money(annualDefense(n)))+box('FORÇA INICIAL',strength(n)+' un.')+box('RELAÇÃO',String(relation(s,target)))+'</div>';
   $('log').innerHTML=s.logs.length?s.logs.slice(0,8).map(l=>'<div class="line"><time>T'+l.turn+'</time><span>'+safe(l.text)+'</span></div>').join(''):'<p class="empty">O registro começa quando você assume uma nação.</p>';
-  $('missions').innerHTML=s.queues.length?s.queues.map(m=>'<div class="line"><time>T'+m.eta+'</time><span><b>'+safe(m.city)+'</b> · '+MODES[m.mode].label+' · '+m.units+' un.</span></div>').join(''):'<p class="empty">Nenhuma ordem em trânsito.</p>';
+  const movements=[...s.queues,...(s.transfers??[]).map(o=>({...o,city:o.destination.name,units:o.count}))];
+  $('missions').innerHTML=movements.length?movements.map(m=>'<div class="line"><time>T'+m.eta+'</time><span><b>'+safe(m.city)+'</b> · '+MODES[m.mode].label+' · '+m.units+' un.</span></div>').join(''):'<p class="empty">Nenhuma ordem em trânsito.</p>';
   drawPanel();drawMap();drawRegionalPanel();
 }
 function budget(){
@@ -86,6 +92,7 @@ const cityOptions=(c,i)=> (places[c]??[]).map((p,j)=>'<option value="'+j+'" '+(i
 function drawPanel(){
   document.querySelectorAll('[data-tab]').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
   if(tab==='chat')return drawChat();
+  if(tab==='forces')return drawForces();
   const s=active(),r=getRoute(),region=atlasCountry===target?currentRegion():null,available=Math.min(Math.max(1,units),s.units);
   $('panel').innerHTML='<div class="form"><div class="row2"><label>Origem<select id="origin">'+cityOptions(s.code,originIndex)+'</select></label><label>Destino<select id="destination">'+(region?'<option>'+safe(destination()[0])+'</option>':cityOptions(target,selected))+'</select></label></div><div class="row2"><label>Modalidade<select id="mode">'+Object.entries(MODES).map(([k,m])=>'<option value="'+k+'" '+(mode===k?'selected':'')+'>'+m.label+'</option>').join('')+'</select></label><label>Unidades<input id="units" type="number" min="1" max="'+s.units+'" value="'+available+'"></label></div><p class="hint" id="route-info">'+(r?safe(r.name)+'<br>'+format(r.km)+' km · '+r.turns+' turno(s) · '+money(r.cost):'Sem rota cadastrada nesta modalidade.')+'</p><div class="actions"><button class="primary" id="dispatch" '+(!r||s.units===0?'disabled':'')+'>Enviar ordem</button><button class="danger" id="war" '+(s.wars[target]||s.occupied[target]?.includes(cap(target)?.[0])?'disabled':'')+'>Declarar guerra</button></div></div>';
   $('origin').onchange=e=>{originIndex=Number(e.target.value);drawPanel();drawMap()};
@@ -139,7 +146,7 @@ async function send(message,proposal){
     if(state===campaign)update();
   }catch{notice('Resposta das regras de campanha mantida.')}finally{pendingChat=false}
 }
-document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;drawPanel()});
+document.querySelectorAll('[data-tab]').forEach(b=>b.onclick=()=>{tab=b.dataset.tab;drawPanel();drawMap()});
 document.querySelectorAll('[data-layer]').forEach(b=>b.onclick=()=>{layer=b.dataset.layer;if(layer==='regioes')loadAtlas(atlasCountry??active().code);else {regionId=null;reset();}document.querySelectorAll('[data-layer]').forEach(x=>x.classList.toggle('on',x===b));draw()});
 const palette={Europe:'#4b6574',Americas:'#445f59',Asia:'#526471',Africa:'#566057',Oceania:'#4e6170'};
 const fromColor='#397e68', targetColor='#52787d', warColor='#8c494f', occupiedColor='#8d784f';
@@ -170,8 +177,9 @@ function drawMap(){
   }
   $('markers').innerHTML=markers.join('');
   drawAtlas();
-  const r=getRoute();
-  const plotted=[...s.queues.map(r=>[r,false]),...(r?[[r,true]]:[])];
+  drawSupply();
+  const r=tab==='forces'?forceRoute():getRoute();
+  const plotted=[...s.queues.map(r=>[r,false]),...(s.transfers??[]).map(r=>[r,false]),...(r?[[r,true]]:[])];
   $('routes').innerHTML=plotted.map(([path,preview])=>{
     const lines=[[]];
     path.points.forEach((p,i)=>{
@@ -265,7 +273,7 @@ async function loadAtlas(code=target){
   try{
     const result=await regionsFor(code,countries);
     if(request!==atlasRequest)return;
-    atlas=result;atlasStatus=result.length?'':'Nenhuma subdivisão disponível para este território.';
+    atlas=result;seedForces(active(),code,result,strength(countries[code]));if(state)save();atlasStatus=result.length?'':'Nenhuma subdivisão disponível para este território.';
   }catch{if(request!==atlasRequest)return;atlasStatus='Atlas regional indisponível. Selecione o país novamente para tentar.'}
   draw();
   if(layer==='regioes'&&atlas.length)focusAtlas();
@@ -291,6 +299,15 @@ function drawRegionalPanel(){
     '<p class="hint">'+(atlas.length?atlas.length+' subdivisões em '+safe(countries[atlasCountry][0])+' · ':'')+owned.length+' região(ões) ocupada(s) · Receita mineral simulada '+money(mineralRevenue(s))+'/turno.</p></div>';
   $('atlas-country').onchange=e=>{const code=e.target.value;if(code===s.code){loadAtlas(code);draw()}else pickTarget(code)};
   $('region-select').onchange=e=>selectRegion(e.target.value);
+  if(region){
+    const controller=s.regions?.[region[0]]?s.code:atlasCountry;
+    const stack=garrison(s,controller,region[0]);
+    const summary=Object.entries(equipment).filter(([key])=>stack[key]>0).map(([key,info])=>stack[key]+' × '+info[1]).join(' · ');
+    panel.insertAdjacentHTML('beforeend','<p class="hint force-summary">Guarnição · '+(summary||'Sem unidades posicionadas')+'</p>');
+  }
+  panel.insertAdjacentHTML('beforeend','<div class="atlas-actions"><button id="show-supply" aria-pressed="'+supplyVisible+'">'+(supplyVisible?'Ocultar rotas':'Ver rotas de suprimento')+'</button><button id="force-panel">Administrar forças →</button></div>');
+  $('show-supply').onclick=()=>{supplyVisible=!supplyVisible;drawRegionalPanel();drawMap()};
+  $('force-panel').onclick=()=>{tab='forces';drawPanel();drawMap();$('command').scrollIntoView({block:'nearest'})};
 }
 function drawAtlas(){
   if(layer!=='regioes'){$('regions').replaceChildren();return}
@@ -299,7 +316,9 @@ function drawAtlas(){
     const id=safe(r[0]), selected=r[0]===regionId, occupied=!!s.regions?.[r[0]];
     const marker=(lon,lat,title,kind)=>{const [x,y]=svgPoint(lon,lat);return '<circle data-region="'+id+'" class="regional-marker '+kind+'" cx="'+x+'" cy="'+y+'" r="'+(kind==='mineral'?3.4:2.4)/Math.sqrt(zoom)+'"><title>'+safe(title)+'</title></circle>'};
     const shape=r[4]?'<path data-region="'+id+'" class="region-shape '+(selected?'chosen ':'')+(occupied?'held':'')+'" d="'+r[4]+'"><title>'+safe(r[1])+'</title></path>':'';
-    const places=(r[2]?marker(r[2][1],r[2][2],r[2][0],'regional-capital'):'')+r[3].map(site=>marker(site[2],site[3],site[0]+' · '+site[1],'mineral')).join('');
+    const label=r[2]&&(selected||zoom>=2.3&&atlas.length<=55)?'<text class="regional-label" x="4" y="-3">'+safe(r[2][0])+'</text>':'';
+    const capital=r[2]?'<g data-region="'+id+'" transform="translate('+svgPoint(r[2][1],r[2][2]).join(' ')+') scale('+1/Math.sqrt(zoom)+')"><circle class="regional-marker regional-capital" r="2.4"><title>'+safe(r[2][0])+'</title></circle>'+label+'</g>':'';
+    const places=capital+r[3].map(site=>marker(site[2],site[3],site[0]+' · '+site[1],'mineral')).join('');
     return [shape,places];
   }).reduce(([shapes,markers],[shape,points])=>[shapes+shape,markers+points],['','']).join('');
 }
@@ -318,6 +337,81 @@ function focusAtlas(){
   offset=[600-(left+right)/2*zoom,265-(top+bottom)/2*zoom];
   clampMap();drawMap();
 }
+async function loadCommandAtlas(){
+  const request=++commandRequest,campaign=state, code=active().code;
+  try{
+    const result=await regionsFor(code,countries);
+    if(request!==commandRequest||campaign!==state)return;
+    commandAtlas=result;
+    seedForces(active(),code,result,strength(countries[code]));
+    if(state)save();
+    if(tab==='forces')drawPanel();
+  }catch{if(tab==='forces')notice('Não foi possível carregar suas guarnições.')}
+}
+const homeForces=()=>[...commandAtlas,...atlas.filter(r=>active().regions?.[r[0]]&&atlasCountry!==active().code)];
+function forceRoute(){
+  const a=homeForces().find(r=>r[0]===forceOrigin),b=currentRegion();
+  if(!a||!b||a[0]===b[0])return null;
+  const mode=equipment[forceType][2],code=active().code;
+  let points;
+  if(mode==='sea')points=seaSupply(a[0],b[0]);
+  if(mode==='air')points=[regionDestination(a),regionDestination(b)];
+  if(mode==='land'){
+    if(atlasCountry===code)points=landSupply(commandAtlas,linksFor(commandAtlas),a[0],b[0],()=>true);
+    else if(commandAtlas.includes(a))points=route(code,atlasCountry,regionDestination(a),regionDestination(b),'land')?.points;
+    else if(active().regions?.[a[0]]?.country===atlasCountry)points=landSupply(atlas,linksFor(atlas),a[0],b[0],r=>r===b||!!active().regions?.[r[0]]);
+  }
+  if(!points)return null;
+  const travel=orderTravel(mode,points,distance);
+  return {...travel,cost:round(Math.max(.01,travel.km/80000+forceCount*equipment[forceType][4]*.12))};
+}
+function drawSupply(){
+  $('supply').replaceChildren();
+  if(layer!=='regioes'||!supplyVisible||!atlas.length)return;
+  const region=currentRegion();
+  const nodes=new Map(atlas.map(r=>[r[0],r]));
+  const links=linksFor(atlas).filter(({a,b})=>!region||region[0]===a||region[0]===b);
+  $('supply').innerHTML=links.map(({a,b})=>{
+    const points=[nodes.get(a),nodes.get(b)].map(r=>{const p=regionDestination(r);return svgPoint(p[1],p[2]).join(',')});
+    return '<polyline class="supply-link" points="'+points.join(' ')+'"/>';
+  }).join('');
+}
+function drawForces(){
+  const s=active(),dest=currentRegion(),homes=homeForces();
+  if(!homes.some(r=>r[0]===forceOrigin))forceOrigin=homes.find(r=>garrison(s,s.code,r[0])[forceType])?.[0]??homes[0]?.[0]??'';
+  const available=garrison(s,s.code,forceOrigin)[forceType]??0, travel=forceRoute();
+  const friendly=atlasCountry===s.code||!!s.regions?.[dest?.[0]];
+  const groups=['Exército','Força Aérea','Marinha'];
+  $('panel').innerHTML='<div class="form"><p class="hint">Escolha o destino no mapa ou no menu Estado ou província. As guarnições são simuladas.</p>'+
+    '<label>Origem da guarnição<select id="force-origin">'+homes.map(r=>'<option value="'+safe(r[0])+'" '+(r[0]===forceOrigin?'selected':'')+'>'+safe(r[1])+(portFor(r[0])?' ⚓':'')+'</option>').join('')+'</select></label>'+
+    '<label>Unidade<select id="force-unit">'+groups.map(group=>'<optgroup label="'+group+'">'+Object.entries(equipment).filter(([,info])=>info[0]===group).map(([key,info])=>'<option value="'+key+'" '+(key===forceType?'selected':'')+'>'+info[1]+' · '+(garrison(s,s.code,forceOrigin)[key]??0)+'</option>').join('')+'</optgroup>').join('')+'</select></label>'+
+    '<label>Quantidade<input id="force-count" type="number" min="1" value="'+forceCount+'"></label>'+
+    '<p class="hint">'+(dest?'Destino · '+safe(dest[1])+(dest[2]?' · '+safe(dest[2][0]):''):'Selecione um destino regional.')+'</p>'+
+    '<p class="hint" id="force-route">'+(travel?format(travel.km)+' km · '+travel.turns+' turno(s) · '+money(travel.cost)+(travel.points.length>2?'<br>'+travel.points.map(p=>safe(p[0])).join(' → '):''):dest?'Sem rota para esta unidade. Navios exigem portos conectados.':'')+'</p>'+
+    '<button id="force-send" class="primary" '+(!travel||!available||!state||!friendly&&!s.wars[atlasCountry]?'disabled':'')+'>'+(friendly?'Enviar reforço':'Atacar província')+'</button>'+
+    (!friendly&&dest&&!s.wars[atlasCountry]?'<p class="hint">Declare guerra ao país na aba Operações para atacar.</p>':'')+
+    '<button id="force-recruit" '+(!state||!forceOrigin||equipment[forceType][2]==='sea'&&!portFor(forceOrigin)?'disabled':'')+'>Mobilizar 1 unidade · '+money(equipment[forceType][4])+'</button></div>';
+  $('force-origin').onchange=e=>{forceOrigin=e.target.value;drawForces();drawMap()};
+  $('force-unit').onchange=e=>{forceType=e.target.value;drawForces();drawMap()};
+  $('force-count').onchange=e=>{forceCount=Math.max(1,Math.trunc(Number(e.target.value)||1));drawForces();drawMap()};
+  $('force-recruit').onclick=()=>{
+    const cost=equipment[forceType][4];
+    if(state.treasury<cost)return notice('Caixa insuficiente.');
+    state.treasury=round(state.treasury-cost);
+    changeGarrison(state,state.code,forceOrigin,forceType,1);
+    log(state,'Mobilização: '+equipment[forceType][1]+'.');update();
+  };
+  $('force-send').onclick=()=>{
+    if(forceCount>available)return notice('A guarnição não tem unidades suficientes.');
+    if(state.treasury<travel.cost)return notice('Caixa insuficiente.');
+    state.treasury=round(state.treasury-travel.cost);
+    changeGarrison(state,state.code,forceOrigin,forceType,-forceCount);
+    (state.transfers??=[]).push({...travel,to:atlasCountry,origin:forceOrigin,unit:forceType,count:forceCount,eta:state.turn+travel.turns,destination:{id:dest[0],name:dest[1],resources:dest[3]}});
+    log(state,'Ordem para '+dest[1]+' · '+forceCount+' × '+equipment[forceType][1]+'.');
+    update();
+  };
+}
 draw();
+loadCommandAtlas();
 loadAtlas(active().code);
 if(!state)choose();

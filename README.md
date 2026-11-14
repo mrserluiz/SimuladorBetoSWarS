@@ -30,3 +30,9 @@ Ative **Províncias** no mapa e escolha um país e uma subdivisão. Em guerra, u
 O atlas administrativo usa o Natural Earth 1:10 milhões. Quando a fonte não identifica uma capital local, o mapa usa um ponto regional e sinaliza a ausência. As áreas minerais são uma seleção documentada em `data/mineral-sites.json` e suas receitas são valores de jogo.
 
 Para regenerar o atlas, rode `python data/build-regions.py CAMINHO_ADMIN1.geojson CAMINHO_POPULATED_PLACES.geojson` com as duas camadas 1:10 milhões do Natural Earth.
+
+## Guarnições e suprimento
+
+Em **Estados e províncias**, selecione um destino e abra **Administrar forças**. Cada província possui guarnição própria, com unidades do Exército, da Força Aérea e da Marinha. Escolha a origem, o tipo e a quantidade. O envio desconta unidades na partida e resolve o reforço ou o combate no turno de chegada. Bases navais usam uma lista de portos e corredores selecionados.
+
+As ligações terrestres domésticas são calculadas pela vizinhança das subdivisões do Natural Earth, com percurso entre pontos de comando. O traçado é uma rede de jogo. Os efetivos são unidades de jogo calculadas a partir do índice nacional de força. A disponibilidade inicial de corvetas e submarinos no Brasil usa como referência a lista pública de [meios da Esquadra da Marinha do Brasil](https://www.marinha.mil.br/forsup/meios-navais). Sua distribuição provincial é simulada.

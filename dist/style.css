@@ -47,3 +47,8 @@ dialog{max-width:min(92vw,520px);width:100%;max-height:88vh;background:#14212c;b
 #regional-panel .form{grid-template-columns:repeat(2,minmax(0,1fr))}
 #regional-panel .form>p,#regional-panel .form>ul{grid-column:1/-1}
 .layers{flex-wrap:wrap}
+.regional-label{font:7px Geist,sans-serif;fill:#fff6dd;paint-order:stroke;stroke:#13232a;stroke-width:2px;pointer-events:none}
+.supply-link{fill:none;stroke:#85c0ff;stroke-width:1.4;stroke-dasharray:4 3;vector-effect:non-scaling-stroke;pointer-events:none}
+.atlas-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.atlas-actions button{min-height:38px;font-size:11px}
+.force-summary{margin-top:7px}

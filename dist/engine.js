@@ -1,3 +1,4 @@
+import {equipment,garrison,changeGarrison} from './forces.js';
 import {mineralRevenue} from './regions.js';
 export const MODES = {
   land: {label:'Terrestre', speed:800, rate:.12},
@@ -95,6 +96,9 @@ export function advance(state,countries) {
     state.units--;
     log(state,'Caixa insuficiente para manutenção. Uma unidade foi desmobilizada.');
   }
+  const transfers=(state.transfers??[]).filter(order=>order.eta<=state.turn);
+  state.transfers=(state.transfers??[]).filter(order=>order.eta>state.turn);
+  for(const order of transfers)resolveTransfer(state,order);
   const arrived=state.queues.filter(m=>m.eta<=state.turn);
   state.queues=state.queues.filter(m=>m.eta>state.turn);
   for (const m of arrived) {
@@ -141,6 +145,35 @@ export function advance(state,countries) {
     log(state,countries[code][0]+' realizou uma contraofensiva. Sua reserva perdeu '+loss+' un.');
   }
 }
+export function resolveTransfer(state,order){
+  const {unit,count,from,to,origin,destination}=order;
+  const owned=to===state.code||!!state.regions?.[destination.id];
+  if(owned){
+    changeGarrison(state,state.code,destination.id,unit,count);
+    log(state,'Reforço em '+destination.name+': '+count+' × '+equipment[unit][1]+'.');
+    return;
+  }
+  if(!state.wars[to]){
+    changeGarrison(state,state.code,origin,unit,count);
+    log(state,'Envio para '+destination.name+' cancelado. Guarnição retornou à origem.');
+    return;
+  }
+  const defenders=garrison(state,to,destination.id);
+  const defense=Object.entries(defenders).reduce((sum,[type,n])=>sum+equipment[type][3]*n,2);
+  const attack=equipment[unit][3]*count;
+  if(attack<defense){
+    const survivors=Math.floor(count*.5);
+    changeGarrison(state,state.code,origin,unit,survivors);
+    log(state,'ATAQUE REPELIDO · '+destination.name+' · perdas: '+(count-survivors)+'.');
+    return;
+  }
+  const survivors=count-Math.min(count-1,Math.floor(defense/equipment[unit][3]*.25));
+  for(const [type,n] of Object.entries(defenders))changeGarrison(state,to,destination.id,type,-n);
+  (state.regions??={})[destination.id]={...destination,country:to};
+  changeGarrison(state,state.code,destination.id,unit,survivors);
+  log(state,destination.name+' ocupada. Guarnição instalada: '+survivors+' × '+equipment[unit][1]+'.');
+}
+
 export function negotiate(state,code,proposal,countries){
   const country=countries[code], ties=relation(state,code);
   if(proposal==='trade'){
