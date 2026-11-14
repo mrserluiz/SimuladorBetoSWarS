@@ -52,3 +52,4 @@ dialog{max-width:min(92vw,520px);width:100%;max-height:88vh;background:#14212c;b
 .atlas-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
 .atlas-actions button{min-height:38px;font-size:11px}
 .force-summary{margin-top:7px}
+.world-news{margin-top:15px}.world-indicators{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:6px;padding:9px}.world-news select{width:auto}.world-news label{font-size:11px}.layers a{color:var(--mint);padding:8px;font-size:11px}.layers button[aria-pressed=true]{background:#375d55;color:white}.tabs{flex-wrap:wrap}.region-shape.conflict{fill:#783f48}

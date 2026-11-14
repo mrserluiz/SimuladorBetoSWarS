@@ -120,3 +120,6 @@ export function seedForces(state,code,regions,scale){
   if(!ports.length)return;
   for(const [unit,count] of Object.entries(naval(code,scale)))for(let i=0;i<count;i++)changeGarrison(state,code,ports[i%ports.length][0],unit,1);
 }
+
+export const stock=(state,id)=>state.stock?.[id]??20;
+export function addStock(state,id,delta){(state.stock??={})[id]=stock(state,id)+delta}

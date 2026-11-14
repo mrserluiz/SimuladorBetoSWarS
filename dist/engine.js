@@ -1,4 +1,5 @@
-import {equipment,garrison,changeGarrison} from './forces.js';
+import {advanceWorld,world,report} from './world-events.js';
+import {equipment,garrison,changeGarrison,addStock,stock} from './forces.js';
 import {mineralRevenue} from './regions.js';
 export const MODES = {
   land: {label:'Terrestre', speed:800, rate:.12},
@@ -72,6 +73,14 @@ export function route(from,to,origin,destination,mode) {
   const km = Math.round(points.slice(1).reduce((n,p,i)=>n+distance(points[i],p),0));
   return {mode, name, points, km, turns:Math.max(1,Math.ceil(km/target.speed)), cost:+(target.rate+km/24000).toFixed(2)};
 }
+export function seaTrade(from,to){
+  const lane=edge(seaLanes,from,to);
+  if(!lane)return null;
+  return route(from,to,ports[from],ports[to],'sea');
+}
+export function tradePartners(code){
+  return seaLanes.filter(lane=>lane.includes(code)).map(lane=>lane[0]===code?lane[1]:lane[0]);
+}
 export const annualDefense = country => country[4] ?? Math.max(.01,country[3]*.017);
 export const strength = country => Math.max(3,Math.round(10*Math.pow(annualDefense(country),.48)+2*Math.pow(country[3],.35)));
 export const round = n => +n.toFixed(2);
@@ -89,7 +98,10 @@ export const weeklyFunds = (state,country) => annualDefense(country)/52*state.fu
 export function advance(state,countries) {
   state.turn++;
   const country=countries[state.code];
-  const income=weeklyFunds(state,country)+mineralRevenue(state)+Object.keys(state.pacts).length*.015+Object.keys(state.occupied).length*.025;
+  const fiscal=advanceWorld(state,countries,seaTrade);
+  const w=world(state);
+  const pactRevenue=Object.keys(state.pacts).filter(code=>!w.embargoes[code]&&!state.wars[code]).length*.015;
+  const income=(w.budgetChanged?fiscal.military:weeklyFunds(state,country))+fiscal.trade+mineralRevenue(state)+pactRevenue+Object.keys(state.occupied).length*.025;
   const maintenance=state.units*.0015+Object.keys(state.wars).length*.025;
   state.treasury=round(Math.max(0,state.treasury+income-maintenance));
   if (state.treasury===0 && income<maintenance && state.units>0) {
@@ -130,6 +142,7 @@ export function advance(state,countries) {
       (state.occupied[m.to]??=[]).push(m.city);
       if(m.capital) {
         delete state.wars[m.to];
+        report(state,'Guerra',other[0],other[0]+' capitulou após a ocupação de '+m.city+'.');
         log(state,m.city+' foi ocupada. '+other[0]+' capitulou no cenário. Baixas: '+losses+'.');
       } else log(state,m.city+' foi ocupada. Baixas: '+losses+'.');
     } else {
@@ -148,6 +161,11 @@ export function advance(state,countries) {
 export function resolveTransfer(state,order){
   const {unit,count,from,to,origin,destination}=order;
   const owned=to===state.code||!!state.regions?.[destination.id];
+  if(order.cargo){
+    addStock(state,owned?destination.id:origin,count);
+    log(state,owned?'Suprimentos entregues em '+destination.name+' · '+count+' lotes.':'Comboio retornou à origem.');
+    return;
+  }
   if(owned){
     changeGarrison(state,state.code,destination.id,unit,count);
     log(state,'Reforço em '+destination.name+': '+count+' × '+equipment[unit][1]+'.');
@@ -159,7 +177,8 @@ export function resolveTransfer(state,order){
     return;
   }
   const defenders=garrison(state,to,destination.id);
-  const defense=Object.entries(defenders).reduce((sum,[type,n])=>sum+equipment[type][3]*n,2);
+  const supplyBonus=Math.min(8,Math.floor(stock(state,destination.id)/10));
+  const defense=Object.entries(defenders).reduce((sum,[type,n])=>sum+equipment[type][3]*n,2+supplyBonus);
   const attack=equipment[unit][3]*count;
   if(attack<defense){
     const survivors=Math.floor(count*.5);
@@ -177,16 +196,17 @@ export function resolveTransfer(state,order){
 export function negotiate(state,code,proposal,countries){
   const country=countries[code], ties=relation(state,code);
   if(proposal==='trade'){
+    if(world(state).embargoes[code])return 'O embargo impede a assinatura de novos acordos comerciais.';
     if(state.wars[code]||ties<0) return 'Nossa delegação suspende a negociação comercial enquanto persistir a tensão bilateral.';
     if(state.pacts[code]) return 'Nosso acordo comercial já está em vigor.';
-    state.pacts[code]=true; changeRelation(state,code,12);
+    state.pacts[code]=true; report(state,'Economia',country[0],'Acordo comercial assinado com '+countries[state.code][0]+'.'); changeRelation(state,code,12);
     log(state,'Acordo comercial com '+country[0]+'. Receita adicional de US$ 0,015 bi por turno.');
     return 'Aceitamos o acordo comercial. A comissão conjunta começa a operar no próximo turno.';
   }
   if (proposal==='peace'){
     if(!state.wars[code]) return 'Nossos governos estão em paz. Podemos discutir cooperação comercial.';
     if(ties < -45 && !state.occupied[code]?.length) {changeRelation(state,code,12);return 'Ainda não aceitamos o cessar-fogo. A proposta reduziu a tensão e pode ser apresentada novamente.'}
-    delete state.wars[code]; changeRelation(state,code,35);
+    delete state.wars[code]; report(state,'Guerra',country[0],'Cessar-fogo assinado com '+countries[state.code][0]+'.'); changeRelation(state,code,35);
     log(state,'Cessar-fogo com '+country[0]+'. As operações em trânsito serão concluídas sem combate.');
     return 'Aceitamos o cessar-fogo. Nossas forças receberam ordem de interromper as hostilidades.';
   }

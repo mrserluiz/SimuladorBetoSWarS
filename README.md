@@ -36,3 +36,9 @@ Para regenerar o atlas, rode `python data/build-regions.py CAMINHO_ADMIN1.geojso
 Em **Estados e províncias**, selecione um destino e abra **Administrar forças**. Cada província possui guarnição própria, com unidades do Exército, da Força Aérea e da Marinha. Escolha a origem, o tipo e a quantidade. O envio desconta unidades na partida e resolve o reforço ou o combate no turno de chegada. Bases navais usam uma lista de portos e corredores selecionados.
 
 As ligações terrestres domésticas são calculadas pela vizinhança das subdivisões do Natural Earth, com percurso entre pontos de comando. O traçado é uma rede de jogo. Os efetivos são unidades de jogo calculadas a partir do índice nacional de força. A disponibilidade inicial de corvetas e submarinos no Brasil usa como referência a lista pública de [meios da Esquadra da Marinha do Brasil](https://www.marinha.mil.br/forsup/meios-navais). Sua distribuição provincial é simulada.
+
+## Comércio, orçamento e jornal mundial
+
+O mapa reúne fronteiras, províncias, capitais, áreas minerais, conflitos e rotas comerciais. **Traçar rota** seleciona duas capitais para despachar tropas ou lotes de suprimento. O painel de comércio ativa corredores marítimos cadastrados, impõe embargos e fecha ou reabre travessias civis modeladas. Guerra e embargo suspendem as receitas comerciais bilaterais.
+
+O orçamento distribui 100% entre defesa, educação, saúde, políticas públicas e ciência e tecnologia. Os indicadores e as notícias do jornal são simulados. Guerras disparam deslocamentos para corredores disponíveis. O mapa de corredores é parcial.
