@@ -42,3 +42,7 @@ As ligações terrestres domésticas são calculadas pela vizinhança das subdiv
 O mapa reúne fronteiras, províncias, capitais, áreas minerais, conflitos e rotas comerciais. **Traçar rota** seleciona duas capitais para despachar tropas ou lotes de suprimento. O painel de comércio ativa corredores marítimos cadastrados, impõe embargos e fecha ou reabre travessias civis modeladas. Guerra e embargo suspendem as receitas comerciais bilaterais.
 
 O orçamento distribui 100% entre defesa, educação, saúde, políticas públicas e ciência e tecnologia. Os indicadores e as notícias do jornal são simulados. Guerras disparam deslocamentos para corredores disponíveis. O mapa de corredores é parcial.
+
+## Pacífico e ilhas
+
+O mapa se repete horizontalmente ao cruzar o meridiano de 180° e aproxima até 120×. O botão **Pacífico** centra a região. A lista **Ilhas do Pacífico** localiza territórios e atóis mesmo quando o contorno é pequeno. O catálogo combina unidades administrativas do [Natural Earth 1:10 milhões](https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-0-details/) com pontos insulares selecionados. Uma expedição usa a reserva nacional e resolve a ocupação ao chegar, durante guerra com o controlador indicado. O traçado e o tempo da expedição são aproximações de jogo.

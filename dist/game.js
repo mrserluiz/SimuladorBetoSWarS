@@ -1,3 +1,4 @@
+import {islands} from './pacific.js';
 import {stock,addStock} from './forces.js?v=world2';
 import {world,sectors,report,nationalBudget,setEmbargo,setBorder,warNews,tradeValue,refugeeCorridors} from './world-events.js?v=world2';
 import {equipment,portFor,regionalLinks,landSupply,seaSupply,orderTravel,garrison,changeGarrison,seedForces} from './forces.js?v=world2';
@@ -7,9 +8,12 @@ const $=id=>document.getElementById(id);
 const safe=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=n=>'US$ '+new Intl.NumberFormat('pt-BR',{maximumFractionDigits:2}).format(n)+' bi';
 const format=n=>new Intl.NumberFormat('pt-BR').format(n);
-const {countries,places}=await fetch('./world-data.json').then(r=>{if(!r.ok)throw Error('Mapa indisponível');return r.json()}).catch(error=>{$('mapstatus').textContent=error.message;throw error});
+const {countries,places}=await fetch('./world-data.json?v=pacific1').then(r=>{if(!r.ok)throw Error('Mapa indisponível');return r.json()}).catch(error=>{$('mapstatus').textContent=error.message;throw error});
 const codes=Object.keys(countries).filter(c=>places[c]?.length).sort((a,b)=>countries[a][0].localeCompare(countries[b][0],'pt-BR'));
 const key='meridiano-campanha-v1';
+const MAX_ZOOM=120, WORLD_WIDTH=1200;
+const islandById=new Map(islands.map(row=>[row[0],row]));
+const islandOwners=new Set(islands.map(row=>row[1]));
 let state;
 try{state=JSON.parse(localStorage.getItem(key))}catch{}
 let target=state?.code==='ARG'?'BRA':'ARG', tab='ops', mode='land', selected=0, originIndex=0, units=10, zoom=1, offset=[0,0], toastTimer, pendingChat=false;
@@ -21,6 +25,7 @@ function notice(message){clearTimeout(toastTimer);$('toast').textContent=message
 function save(){try{localStorage.setItem(key,JSON.stringify(state))}catch{}}
 function update(){save();draw()}
 function modal(title,body){$('modal-title').textContent=title;$('modal-body').innerHTML=body;if(!$('modal').open)$('modal').showModal()}
+let selectedIsland=null;
 let pickingRoute=false, originPicked=false, cargo=false;
 let commandAtlas=[], commandRequest=0, forceOrigin='', forceType='infantry', forceCount=1, supplyVisible=false;
 const linkCache=new WeakMap();
@@ -29,7 +34,7 @@ let atlas=[], regionId=null, atlasCountry=null, atlasStatus="", atlasRequest=0;
 const currentRegion=()=>atlas.find(r=>r[0]===regionId);
 const sample=newCampaign('BRA',countries);
 function start(code){
-  state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;pickingRoute=false;originPicked=false;cargo=false;
+  state=newCampaign(code,countries);target=code==='BRA'?'ARG':'BRA';selected=0;originIndex=0;mode=code==='BRA'?'land':'air';tab='ops';units=10;pickingRoute=false;originPicked=false;cargo=false;selectedIsland=null;
   log(state,'Campanha iniciada. '+countries[code][0]+' está sob seu comando.');
   atlas=[];regionId=null;atlasCountry=null;
   commandAtlas=[];forceOrigin='';forceType='infantry';forceCount=1;
@@ -55,6 +60,8 @@ $('guide').onclick=()=>modal('Como jogar','<ol><li>Escolha uma nação e clique 
 $('sources').onclick=()=>modal('Dados e metodologia','<p><b>Economia.</b> PIB nominal em dólares, ano-base 2025, <a href="https://data.imf.org/Datasets/WEO" target="_blank" rel="noopener">FMI World Economic Outlook</a>. O cenário usa a edição de outubro de 2026.</p><p><b>Defesa.</b> Gasto militar 2025 de 40 países do <a href="https://www.sipri.org/publications/2026/sipri-fact-sheets/trends-world-military-expenditure-2025" target="_blank" rel="noopener">SIPRI</a>. Nos demais, o jogo estima 1,7% do PIB com piso de US$ 0,01 bi. O caixa inicial usa 15% do gasto de referência com piso de US$ 0,25 bi. O repasse semanal é gasto anual ÷ 52 × alocação.</p><p><b>Força.</b> Unidades abstratas calculadas com gasto de defesa e PIB. O índice inicial arredonda 10 × defesa<sup>0,48</sup> + 2 × PIB<sup>0,35</sup>, com piso de três unidades. Distância, modalidade e unidades afetam as missões.</p><p><b>Mapa.</b> Fronteiras e localidades do <a href="https://www.naturalearthdata.com/downloads/110m-cultural-vectors/" target="_blank" rel="noopener">Natural Earth</a>, escala 1:110 milhões. As rotas usam pontos de passagem selecionados e estimativas de distância, com cobertura parcial.</p><p><b>Províncias e minérios.</b> Fronteiras administrativas e capitais disponíveis do <a href="https://www.naturalearthdata.com/downloads/10m-cultural-vectors/10m-admin-1-states-provinces/" target="_blank" rel="noopener">Natural Earth 1:10 milhões</a>. Cada área mineral tem fonte própria e receita definida para o jogo.</p>');
 $('next').onclick=()=>{if(!state)return choose();advance(state,countries);update();notice('Turno '+state.turn+' · '+date(state.turn))};
 function pickTarget(code,city=0){
+  selectedIsland=null;
+  $('island-select').value='';
   if(!countries[code])return;
   if(code===active().code){loadAtlas(code);originIndex=city;drawPanel();drawMap();notice('Origem: '+(places[code]?.[city]?.[0]??countries[code][0]));return}
   target=code;selected=city;regionId=null;
@@ -210,12 +217,14 @@ function drawMap(){
   }).join('');
   $('legend').innerHTML=[[fromColor,'Sob seu comando'],[warColor,'Em guerra'],[occupiedColor,'Capitulou'],['#e6c784','Capital'],['#80e7bc','Rota prevista'],['#e9d7a6','Capital regional'],['#dbaaef','Área mineral'],['#c9a55b','Província ocupada'],['#61cfff','Comércio marítimo']].map(([color,label])=>'<span><i class="key" style="background:'+color+'"></i>'+label+'</span>').join('');
   $('mapstatus').textContent=Object.keys(countries).length+' TERRITÓRIOS · '+Object.values(places).reduce((n,p)=>n+p.length,0)+' LOCALIDADES';
+  drawIslands();
+  syncWorldCopies();
   updateCamera();
 }
 function updateCamera(){$('camera').setAttribute('transform','translate('+offset.join(' ')+') scale('+zoom+')');$('coords').textContent=zoom===1?'VISÃO GLOBAL':'ZOOM '+zoom.toFixed(1).replace('.',',')+'×'}
 function setZoom(next,x=600,y=265){
-  const newZoom=Math.max(1,Math.min(9,next));
-  offset=newZoom===1?[0,0]:[x-(x-offset[0])*newZoom/zoom,y-(y-offset[1])*newZoom/zoom];
+  const newZoom=Math.max(1,Math.min(MAX_ZOOM,next));
+  offset=[x-(x-offset[0])*newZoom/zoom,y-(y-offset[1])*newZoom/zoom];
   zoom=newZoom;clampMap();drawMap();
 }
 function reset(){zoom=1;offset=[0,0];updateCamera()}
@@ -232,14 +241,15 @@ function pinch(){
   return {center:[(a[0]+b[0])/2,(a[1]+b[1])/2],gap:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1]))};
 }
 function clampMap(){
-  offset=[Math.max(1200*(1-zoom),Math.min(0,offset[0])),Math.max(530*(1-zoom),Math.min(0,offset[1]))];
+    const period=WORLD_WIDTH*zoom;
+  offset=[-(((-offset[0]%period)+period)%period),Math.max(530*(1-zoom),Math.min(0,offset[1]))];
 }
 map.onpointerdown=e=>{
   if(e.button!==0||pointers.size>=2)return;
   const point=coordinates(e);
   pointers.set(e.pointerId,point);
   map.setPointerCapture(e.pointerId);
-  if(pointers.size===1)gesture={start:point,from:[...offset],clicked:e.target.closest('[data-region],[data-code]'),moved:false};
+  if(pointers.size===1)gesture={start:point,from:[...offset],clicked:e.target.closest('[data-island],[data-region],[data-code]'),moved:false};
   else gesture={...pinch(),from:[...offset],zoom,moved:true};
 };
 map.onpointermove=e=>{
@@ -248,14 +258,14 @@ map.onpointermove=e=>{
   pointers.set(e.pointerId,point);
   if(pointers.size===2){
     const current=pinch();
-    zoom=Math.max(1,Math.min(9,gesture.zoom*current.gap/gesture.gap));
+    zoom=Math.max(1,Math.min(MAX_ZOOM,gesture.zoom*current.gap/gesture.gap));
     offset=gesture.from.map((v,i)=>current.center[i]-(gesture.center[i]-v)*zoom/gesture.zoom);
     clampMap();drawMap();
     return;
   }
   const [dx,dy]=point.map((v,i)=>v-gesture.start[i]);
   if(Math.hypot(dx,dy)>6)gesture.moved=true;
-  if(gesture.moved&&zoom>1){
+  if(gesture.moved){
     offset=[gesture.from[0]+dx,gesture.from[1]+dy];
     clampMap();updateCamera();
   }
@@ -268,7 +278,8 @@ function endPointer(e,cancelled){
   }
   const clicked=gesture.clicked;
   if(!cancelled&&clicked&&!gesture.moved){
-    if(clicked.dataset.region){
+    if(clicked.dataset.island)selectIsland(clicked.dataset.island);
+    else if(clicked.dataset.region){
       if(clicked.dataset.capital&&pickingRoute)pickCapital(clicked.dataset.region);
       else selectRegion(clicked.dataset.region);
     }
@@ -293,9 +304,10 @@ async function loadAtlas(code=target){
     atlas=result;seedForces(active(),code,result,strength(countries[code]));if(state)save();atlasStatus=result.length?'':'Nenhuma subdivisão disponível para este território.';
   }catch{if(request!==atlasRequest)return;atlasStatus='Atlas regional indisponível. Selecione o país novamente para tentar.'}
   draw();
-  if(atlas.length)focusAtlas();
+  if(atlas.length&&!selectedIsland)focusAtlas();
 }
 function selectRegion(id){
+  selectedIsland=null;$('island-select').value='';
   regionId=id||null;
   if(atlasCountry===target&&!getRoute())mode='air';
   draw();
@@ -312,7 +324,8 @@ function drawRegionalPanel(){
     (region?'<p class="hint">'+(region[2]?'Capital local · '+safe(region[2][0]):'Capital sem registro · objetivo regional')+(atlasCountry===s.code||s.regions?.[region[0]]?' · Sob seu comando':'')+'</p>':'')+
     (resources?'<ul class="deposits">'+resources+'</ul>':'')+
     '<p class="hint">'+(atlas.length?atlas.length+' subdivisões em '+safe(countries[atlasCountry][0])+' · ':'')+owned.length+' região(ões) ocupada(s) · Receita mineral simulada '+money(mineralRevenue(s))+'/turno.</p></div>';
-  $('atlas-country').onchange=e=>{const code=e.target.value;if(code===s.code){loadAtlas(code);draw()}else pickTarget(code)};
+  if(selectedIsland)drawIslandPanel(panel,s);
+  $('atlas-country').onchange=e=>{selectedIsland=null;$('island-select').value='';const code=e.target.value;if(code===s.code){loadAtlas(code);draw()}else pickTarget(code)};
   $('region-select').onchange=e=>selectRegion(e.target.value);
   if(region){
     const controller=s.regions?.[region[0]]?s.code:atlasCountry;
@@ -336,18 +349,90 @@ function drawAtlas(){
     return [shape,places];
   }).reduce(([shapes,markers],[shape,points])=>[shapes+shape,markers+points],['','']).join('');
 }
+function syncWorldCopies(){
+  const tile=$('world-tile');
+  for(const id of ['west-world','east-world']){
+    const children=[...tile.children].map(el=>{const copy=el.cloneNode(true);copy.removeAttribute('id');return copy});
+    $(id).replaceChildren(...children);
+  }
+}
+function focusCoordinates(lon,lat,scale){
+  const [x,y]=svgPoint(lon,lat);
+  zoom=scale;offset=[600-x*zoom,265-y*zoom];
+  clampMap();drawMap();
+}
+function drawIslands(){
+  const s=active(),r=7/zoom;
+  $('islands').innerHTML=islands.map(([id,owner,name,lon,lat,path])=>{
+    const [x,y]=svgPoint(lon,lat),held=!!s.regions?.['island-'+id];
+    const label=zoom>=9||selectedIsland===id;
+    const shape=path?'<path class="island-land" fill="'+(held?occupiedColor:fillCountry(owner))+'" d="'+path+'"/>':'';
+    return '<g data-island="'+id+'" class="island '+(held?'held':'')+(selectedIsland===id?' chosen':'')+'">'+shape+
+      '<circle class="island-hit" cx="'+x+'" cy="'+y+'" r="'+r+'"/><circle class="island-dot" cx="'+x+'" cy="'+y+'" r="'+r*.47+'"/>'+
+      (label?'<text class="regional-label" transform="translate('+x+' '+y+') scale('+1/zoom+')" x="8" y="-6">'+safe(name)+'</text>':'')+
+      '<title>'+safe(name)+' · '+safe(countries[owner][0])+'</title></g>';
+  }).join('');
+}
+function selectIsland(id){
+  const island=islandById.get(id);
+  if(!island)return;
+  const [,owner,,lon,lat]=island;
+  selectedIsland=id;$('island-select').value=id;
+  if(owner!==active().code){target=owner;selected=0;}
+  loadAtlas(owner);
+  focusCoordinates(lon,lat,Math.max(zoom,32));
+  drawRegionalPanel();
+}
+function drawIslandPanel(panel,s){
+  const [id,owner,name,lon,lat]=islandById.get(selectedIsland);
+  const key='island-'+id;
+  const held=owner===s.code||!!s.regions?.[key],war=!!s.wars[owner];
+  const base=origin();
+  const km=base?Math.round(distance(base,[name,lon,lat])):0;
+  const turns=Math.max(1,Math.ceil(km/1500)),cost=round(.12+km/30000);
+  const pending=s.queues.some(order=>order.region?.id===key);
+  panel.insertAdjacentHTML('beforeend','<div class="island-detail"><h3>'+safe(name)+'</h3><p class="hint">'+(held?'Sob seu comando':'Território de '+safe(countries[owner][0]))+'</p>'+
+    (held?'': '<p class="hint">Expedição simulada · '+format(km)+' km · '+turns+' turno(s) · '+money(cost)+'</p><div class="actions"><button id="island-war" '+(war?'disabled':'')+'>Declarar guerra</button><button id="island-send" class="primary" '+(!war||pending||!s.units||!base?'disabled':'')+'>Enviar expedição</button></div>')+'</div>');
+  if(held)return;
+  $('island-war').onclick=()=>{
+    if(!state)return choose();
+    modal('Declarar guerra','<p>Ocupar '+safe(name)+' exige guerra com '+safe(countries[owner][0])+'.</p><button id="island-confirm">Confirmar declaração</button>');
+    $('island-confirm').onclick=()=>{
+      state.wars[owner]=true;delete state.pacts[owner];changeRelation(state,owner,-60);
+      warNews(state,owner,countries);log(state,'Guerra declarada contra '+countries[owner][0]+'.');$('modal').close();update();
+    };
+  };
+  $('island-send').onclick=()=>{
+    if(!state)return choose();
+    modal('Expedição para '+name,'<form class="form" id="expedition"><label>Unidades da reserva<input id="expedition-units" type="number" min="1" max="'+state.units+'" value="'+Math.min(10,state.units)+'" required></label><button type="submit" class="primary">Despachar por '+money(cost)+'</button></form>');
+    $('expedition').onsubmit=e=>{
+      e.preventDefault();
+      const count=Number($('expedition-units').value);
+      if(!Number.isInteger(count)||count<1||count>state.units||state.treasury<cost)return notice('Verifique as unidades e o caixa disponíveis.');
+      state.units-=count;state.treasury=round(state.treasury-cost);
+      state.queues.push({mode:'sea',points:[base,[name,lon,lat]],km,eta:state.turn+turns,to:owner,city:name,units:count,region:{id:key,name,resources:[]}});
+      log(state,'Expedição enviada para '+name+'.');$('modal').close();update();
+    };
+  };
+}
+$('island-select').insertAdjacentHTML('beforeend', [...islands].sort((a,b)=>a[2].localeCompare(b[2],'pt-BR')).map(([id,,name])=>'<option value="'+id+'">'+safe(name)+'</option>').join(''));
+$('island-select').onchange=e=>{
+  if(e.target.value)selectIsland(e.target.value);
+  else{selectedIsland=null;draw()}
+};
+$('pacific').onclick=()=>focusCoordinates(180,-9,2.5);
 function focusAtlas(){
   const shapes=[...$('regions').querySelectorAll('.region-shape')];
   const selected=shapes.find(shape=>shape.dataset.region===regionId);
   let boxes=(selected?[selected]:shapes).map(shape=>shape.getBBox()).filter(box=>box.width&&box.height);
-  if(!boxes.length)return;
+  if(!boxes.length){const p=cap(atlasCountry);if(p&&islandOwners.has(atlasCountry))focusCoordinates(p[1],p[2],40);return;}
   if(!selected&&atlasCountry==='FRA'){
     const mainland=boxes.filter(box=>box.x>560&&box.x<650&&box.y<165);
     if(mainland.length)boxes=mainland;
   }
   const left=Math.min(...boxes.map(b=>b.x)),right=Math.max(...boxes.map(b=>b.x+b.width));
   const top=Math.min(...boxes.map(b=>b.y)),bottom=Math.max(...boxes.map(b=>b.y+b.height));
-  zoom=Math.max(1,Math.min(9,980/Math.max(1,right-left),410/Math.max(1,bottom-top)));
+  zoom=Math.max(1,Math.min(MAX_ZOOM,980/Math.max(1,right-left),410/Math.max(1,bottom-top)));
   offset=[600-(left+right)/2*zoom,265-(top+bottom)/2*zoom];
   clampMap();drawMap();
 }
