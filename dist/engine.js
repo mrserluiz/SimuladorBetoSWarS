@@ -2,6 +2,7 @@ import {advanceWorld,world,report} from './world-events.js';
 import {equipment,garrison,changeGarrison,addStock,stock} from './forces.js';
 import {mineralRevenue} from './regions.js';
 export const MODES = {
+  rail: {label:'Ferroviária', speed:700, rate:.10},
   land: {label:'Terrestre', speed:800, rate:.12},
   air: {label:'Aérea', speed:3200, rate:.28},
   sea: {label:'Marítima', speed:1800, rate:.18}
@@ -140,7 +141,7 @@ export function advance(state,countries) {
     const population = m.population||1;
     const defenseShare=m.capital ? .33 : m.region ? .14 : .20;
     const defense=Math.max(2,Math.round(strength(other)*defenseShare+Math.log10(population)/2-(state.occupied[m.to]?.length||0)*2));
-    const attack=m.units*({land:1,air:.87,sea:.92}[m.mode]);
+    const attack=m.units*({land:1,rail:1,air:.87,sea:.92}[m.mode]??1);
     const won=attack>=defense;
     const losses=Math.min(m.units,Math.max(1,Math.round(won?defense*.27:m.units*.55)));
     state.units+=m.units-losses;
