@@ -106,7 +106,7 @@ function drawPanel(){
   };
 }
 let gpt=false;
-fetch('/api/diplomacy',{headers:{Accept:'application/json'}}).then(r=>r.ok&&r.headers.get('content-type')?.includes('application/json')?r.json():null).then(config=>{gpt=config?.enabled===true;if(tab==='chat')drawChat()}).catch(()=>{});
+fetch('./api/diplomacy',{headers:{Accept:'application/json'}}).then(r=>r.ok&&r.headers.get('content-type')?.includes('application/json')?r.json():null).then(config=>{gpt=config?.enabled===true;if(tab==='chat')drawChat()}).catch(()=>{});
 function drawChat(){
   const messages=state?.chats[target]??[];
   $('panel').innerHTML='<div class="form"><div class="hint">Canal com '+safe(countries[target][0])+' · '+(gpt?'GPT + regras de campanha':'Líder simulado')+'</div><div class="chat" id="messages" role="log">'+(messages.length?messages.map(m=>'<div class="bubble '+(m.me?'me':'')+'"><b>'+safe(m.me?'Seu governo':countries[target][0])+'</b>'+safe(m.text)+'</div>').join(''):'<p class="hint">Abra a negociação com uma proposta ou envie uma mensagem.</p>')+'</div><div class="quick"><button data-propose="trade">Acordo comercial</button><button data-propose="peace">Cessar-fogo</button><button data-propose="threat">Advertência</button></div><form class="chat-entry" id="send"><input id="message" maxlength="400" required aria-label="Mensagem diplomática" placeholder="Envie uma mensagem"><button class="primary" aria-label="Enviar mensagem">→</button></form></div>';
@@ -127,7 +127,7 @@ async function send(message,proposal){
   if(!gpt)return;
   pendingChat=true;
   try{
-    const request=await fetch('/api/diplomacy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:countries[campaign.code][0],leader:countries[opponent][0],outcome,atWar:!!campaign.wars[opponent],relation:relation(campaign,opponent),history:history.slice(-9,-1)}),signal:AbortSignal.timeout(12000)});
+    const request=await fetch('./api/diplomacy',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({player:countries[campaign.code][0],leader:countries[opponent][0],outcome,atWar:!!campaign.wars[opponent],relation:relation(campaign,opponent),history:history.slice(-9,-1)}),signal:AbortSignal.timeout(12000)});
     if(!request.ok)throw Error('GPT indisponível');
     const response=await request.json();if(response.text)reply.text=response.text;
     if(state===campaign)update();
@@ -187,7 +187,7 @@ function updateCamera(){$('camera').setAttribute('transform','translate('+offset
 function setZoom(next,x=600,y=265){
   const newZoom=Math.max(1,Math.min(9,next));
   offset=newZoom===1?[0,0]:[x-(x-offset[0])*newZoom/zoom,y-(y-offset[1])*newZoom/zoom];
-  zoom=newZoom;drawMap();
+  zoom=newZoom;clampMap();drawMap();
 }
 function reset(){zoom=1;offset=[0,0];updateCamera()}
 $('plus').onclick=()=>setZoom(zoom*1.4);
@@ -196,10 +196,57 @@ $('home').onclick=()=>{reset();drawMap()};
 const map=$('map');
 function coordinates(e){const p=new DOMPoint(e.clientX,e.clientY).matrixTransform(map.getScreenCTM().inverse());return [p.x,p.y]}
 map.onwheel=e=>{e.preventDefault();setZoom(zoom*(e.deltaY<0?1.25:.8),...coordinates(e))};
-let pan;
-map.onpointerdown=e=>{if(e.button!==0)return;pan={start:coordinates(e),from:[...offset],clicked:e.target.closest('[data-code]'),moved:false};map.setPointerCapture(e.pointerId)};
-map.onpointermove=e=>{if(!pan)return;const [x,y]=coordinates(e),dx=x-pan.start[0],dy=y-pan.start[1];if(Math.hypot(dx,dy)>5)pan.moved=true;if(pan.moved&&zoom>1){offset=[Math.max(1200*(1-zoom),Math.min(0,pan.from[0]+dx)),Math.max(530*(1-zoom),Math.min(0,pan.from[1]+dy))];updateCamera()}};
-map.onpointerup=()=>{const c=pan?.clicked;if(c&&!pan.moved)pickTarget(c.dataset.code,Number(c.dataset.city??0));pan=null};
-map.onpointercancel=()=>{pan=null};
+const pointers=new Map();
+let gesture;
+function pinch(){
+  const [a,b]=[...pointers.values()];
+  return {center:[(a[0]+b[0])/2,(a[1]+b[1])/2],gap:Math.max(1,Math.hypot(a[0]-b[0],a[1]-b[1]))};
+}
+function clampMap(){
+  offset=[Math.max(1200*(1-zoom),Math.min(0,offset[0])),Math.max(530*(1-zoom),Math.min(0,offset[1]))];
+}
+map.onpointerdown=e=>{
+  if(e.button!==0||pointers.size>=2)return;
+  const point=coordinates(e);
+  pointers.set(e.pointerId,point);
+  map.setPointerCapture(e.pointerId);
+  if(pointers.size===1)gesture={start:point,from:[...offset],clicked:e.target.closest('[data-code]'),moved:false};
+  else gesture={...pinch(),from:[...offset],zoom,moved:true};
+};
+map.onpointermove=e=>{
+  if(!pointers.has(e.pointerId))return;
+  const point=coordinates(e);
+  pointers.set(e.pointerId,point);
+  if(pointers.size===2){
+    const current=pinch();
+    zoom=Math.max(1,Math.min(9,gesture.zoom*current.gap/gesture.gap));
+    offset=gesture.from.map((v,i)=>current.center[i]-(gesture.center[i]-v)*zoom/gesture.zoom);
+    clampMap();drawMap();
+    return;
+  }
+  const [dx,dy]=point.map((v,i)=>v-gesture.start[i]);
+  if(Math.hypot(dx,dy)>6)gesture.moved=true;
+  if(gesture.moved&&zoom>1){
+    offset=[gesture.from[0]+dx,gesture.from[1]+dy];
+    clampMap();updateCamera();
+  }
+};
+function endPointer(e,cancelled){
+  if(!pointers.delete(e.pointerId))return;
+  if(pointers.size){
+    gesture={start:pointers.values().next().value,from:[...offset],moved:true};
+    return;
+  }
+  const clicked=gesture.clicked;
+  if(!cancelled&&clicked&&!gesture.moved)pickTarget(clicked.dataset.code,Number(clicked.dataset.city??0));
+  gesture=null;
+}
+map.onpointerup=e=>endPointer(e,false);
+map.onpointercancel=e=>endPointer(e,true);
+map.onlostpointercapture=e=>endPointer(e,true);
+document.querySelectorAll('[data-mobile-tab]').forEach(link=>link.onclick=()=>{
+  tab=link.dataset.mobileTab;
+  drawPanel();
+});
 draw();
 if(!state)choose();
